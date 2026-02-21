@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Linq;
+using CEMCP;
 using CESDK.Classes;
 using ModelContextProtocol.Server;
 
@@ -23,108 +24,274 @@ namespace Tools
             return pid > 0;
         }
 
-        [McpServerTool(Name = "read_memory"), Description("Read memory at the given address with the specified data type")]
+        [
+            McpServerTool(Name = "read_memory"),
+            Description("Read memory at the given address with the specified data type")
+        ]
         public static object ReadMemory(
             [Description("Memory address as a hex string (e.g. '0x1234ABCD')")] string address,
-            [Description("Data type: 'bytes', 'int32', 'int64', 'float', 'string'")] string dataType,
-            [Description("Number of bytes to read (required for 'bytes' type)")] int? byteCount = null,
-            [Description("Max length for strings (required for 'string' type)")] int? maxLength = null,
-            [Description("Whether string is wide char (UTF-16)")] bool wideChar = false)
+            [Description("Data type: 'bytes', 'int32', 'int64', 'float', 'string'")]
+                string dataType,
+            string? byteCount = null,
+            string? maxLength = null,
+            string wideChar = "false"
+        )
         {
-            if (!IsProcessAttached())
-                return new { success = false, error = "No process is attached. Please open a process first using 'open_process' tool." };
-            try
+            return CeLuaGate.Run<object>(() =>
             {
-                if (string.IsNullOrWhiteSpace(address))
-                    return new { success = false, error = "Address parameter is required" };
-
-                if (string.IsNullOrWhiteSpace(dataType))
-                    return new { success = false, error = "DataType parameter is required" };
-
-                if (!TryParseAddress(address, out ulong addr))
-                    return new { success = false, error = "Invalid address format" };
-
-                object value = dataType.ToLower() switch
+                if (!IsProcessAttached())
+                    return new
+                    {
+                        success = false,
+                        error = "No process is attached. Please open a process first using 'open_process' tool.",
+                    };
+                try
                 {
-                    "bytes" => byteCount.HasValue && byteCount.Value > 0
-                        ? MemoryAccess.ReadBytes(addr, byteCount.Value)
-                        : throw new ArgumentException("ByteCount is required for bytes and must be > 0"),
+                    if (string.IsNullOrWhiteSpace(address))
+                        return new { success = false, error = "Address parameter is required" };
 
-                    "integer" or "int32" or "int" => MemoryAccess.ReadInteger(addr),
-                    "qword" or "int64" or "long" => MemoryAccess.ReadQword(addr),
-                    "float" => MemoryAccess.ReadFloat(addr),
-                    "double" => MemoryAccess.ReadDouble(addr),
-                    "byte" => MemoryAccess.ReadByte(addr),
-                    "int16" or "short" => MemoryAccess.ReadSmallInteger(addr),
+                    if (string.IsNullOrWhiteSpace(dataType))
+                        return new { success = false, error = "DataType parameter is required" };
 
-                    "string" => maxLength.HasValue && maxLength.Value > 0
-                        ? MemoryAccess.ReadString(addr, maxLength.Value, wideChar)
-                        : throw new ArgumentException("MaxLength is required for string and must be > 0"),
+                    if (!TryParseAddress(address, out ulong addr))
+                        return new { success = false, error = "Invalid address format" };
 
-                    _ => throw new NotSupportedException($"Unsupported data type: {dataType}")
-                };
+                    bool isWide = wideChar.Equals("true", StringComparison.OrdinalIgnoreCase);
 
-                return new { success = true, value };
-            }
-            catch (Exception ex)
-            {
-                return new { success = false, error = ex.Message };
-            }
+                    object value = dataType.ToLower() switch
+                    {
+                        "bytes" => !string.IsNullOrEmpty(byteCount)
+                        && int.TryParse(byteCount, out var bc)
+                        && bc > 0
+                            ? MemoryAccess.ReadBytes(addr, bc)
+                            : throw new ArgumentException(
+                                "ByteCount is required for bytes and must be > 0"
+                            ),
+
+                        "integer" or "int32" or "int" => MemoryAccess.ReadInteger(addr),
+                        "qword" or "int64" or "long" => MemoryAccess.ReadQword(addr),
+                        "float" => MemoryAccess.ReadFloat(addr),
+                        "double" => MemoryAccess.ReadDouble(addr),
+                        "byte" => MemoryAccess.ReadByte(addr),
+                        "int16" or "short" => MemoryAccess.ReadSmallInteger(addr),
+
+                        "string" => !string.IsNullOrEmpty(maxLength)
+                        && int.TryParse(maxLength, out var ml)
+                        && ml > 0
+                            ? MemoryAccess.ReadString(addr, ml, isWide)
+                            : throw new ArgumentException(
+                                "MaxLength is required for string and must be > 0"
+                            ),
+
+                        _ => throw new NotSupportedException($"Unsupported data type: {dataType}"),
+                    };
+
+                    return new { success = true, value };
+                }
+                catch (Exception ex)
+                {
+                    return new { success = false, error = ex.Message };
+                }
+            });
         }
 
-        [McpServerTool(Name = "write_memory"), Description("Write a value to memory at the given address")]
+        [
+            McpServerTool(Name = "write_memory"),
+            Description("Write a value to memory at the given address")
+        ]
         public static object WriteMemory(
             [Description("Memory address as hex string (e.g. '0x1234ABCD')")] string address,
-            [Description("Data type: 'bytes', 'int32', 'int64', 'float', 'string'")] string dataType,
+            [Description("Data type: 'bytes', 'int32', 'int64', 'float', 'string'")]
+                string dataType,
             [Description("Value to write (format depends on dataType)")] string value,
-            [Description("Max length for strings")] int? maxLength = null,
-            [Description("Whether string is wide char (UTF-16)")] bool wideChar = false)
+            string? maxLength = null,
+            string wideChar = "false"
+        )
         {
-            if (!IsProcessAttached())
-                return new { success = false, error = "No process is attached. Please open a process first using 'open_process' tool." };
-
-            try
+            return CeLuaGate.Run<object>(() =>
             {
-                if (string.IsNullOrWhiteSpace(address))
-                    return new { success = false, error = "Address parameter is required" };
+                if (!IsProcessAttached())
+                    return new
+                    {
+                        success = false,
+                        error = "No process is attached. Please open a process first using 'open_process' tool.",
+                    };
 
-                if (string.IsNullOrWhiteSpace(dataType))
-                    return new { success = false, error = "DataType parameter is required" };
-
-                if (string.IsNullOrWhiteSpace(value))
-                    return new { success = false, error = "Value parameter is required" };
-
-                if (!TryParseAddress(address, out ulong addr))
-                    return new { success = false, error = "Invalid address format" };
-
-                object written = dataType.ToLower() switch
+                try
                 {
-                    "bytes" => WriteBytes(addr, value),
-                    "integer" or "int32" or "int" => WriteInt32(addr, value),
-                    "qword" or "int64" or "long" => WriteInt64(addr, value),
-                    "float" => WriteFloat(addr, value),
-                    "double" => WriteDouble(addr, value),
-                    "byte" => WriteByte(addr, value),
-                    "int16" or "short" => WriteInt16(addr, value),
-                    "string" => WriteString(addr, value, maxLength, wideChar),
-                    _ => throw new NotSupportedException($"Unsupported data type: {dataType}")
-                };
+                    if (string.IsNullOrWhiteSpace(address))
+                        return new { success = false, error = "Address parameter is required" };
 
-                return new { success = true, value = written };
-            }
-            catch (Exception ex)
+                    if (string.IsNullOrWhiteSpace(dataType))
+                        return new { success = false, error = "DataType parameter is required" };
+
+                    if (string.IsNullOrWhiteSpace(value))
+                        return new { success = false, error = "Value parameter is required" };
+
+                    if (!TryParseAddress(address, out ulong addr))
+                        return new { success = false, error = "Invalid address format" };
+
+                    bool isWide = wideChar.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    int? ml =
+                        !string.IsNullOrEmpty(maxLength)
+                        && int.TryParse(maxLength, out var parsedMl)
+                            ? parsedMl
+                            : (int?)null;
+
+                    object written = dataType.ToLower() switch
+                    {
+                        "bytes" => WriteBytes(addr, value),
+                        "integer" or "int32" or "int" => WriteInt32(addr, value),
+                        "qword" or "int64" or "long" => WriteInt64(addr, value),
+                        "float" => WriteFloat(addr, value),
+                        "double" => WriteDouble(addr, value),
+                        "byte" => WriteByte(addr, value),
+                        "int16" or "short" => WriteInt16(addr, value),
+                        "string" => WriteString(addr, value, ml, isWide),
+                        _ => throw new NotSupportedException($"Unsupported data type: {dataType}"),
+                    };
+
+                    return new { success = true, value = written };
+                }
+                catch (Exception ex)
+                {
+                    return new { success = false, error = ex.Message };
+                }
+            });
+        }
+
+        [
+            McpServerTool(Name = "allocate_memory"),
+            Description("Allocate memory in the target process")
+        ]
+        public static object AllocateMemory(string? preferredAddress = null, int size = 4096)
+        {
+            return CeLuaGate.Run<object>(() =>
             {
-                return new { success = false, error = ex.Message };
-            }
+                try
+                {
+                    ulong prefAddr = 0;
+                    if (
+                        !string.IsNullOrEmpty(preferredAddress)
+                        && !TryParseAddress(preferredAddress, out prefAddr)
+                    )
+                        return new { success = false, error = "Invalid preferred address format" };
+
+                    long address = MemoryAllocator.AllocateMemory(
+                        size,
+                        prefAddr != 0 ? (long)prefAddr : null
+                    );
+                    return new { success = true, address = $"0x{address:X}" };
+                }
+                catch (Exception ex)
+                {
+                    return new { success = false, error = ex.Message };
+                }
+            });
+        }
+
+        [
+            McpServerTool(Name = "deallocate_memory"),
+            Description("Deallocate memory in the target process")
+        ]
+        public static object DeAllocate(string address, int size = 0)
+        {
+            return CeLuaGate.Run<object>(() =>
+            {
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(address))
+                        return new { success = false, error = "Address parameter is required" };
+
+                    if (!TryParseAddress(address, out ulong addr))
+                        return new { success = false, error = "Invalid address format" };
+
+                    MemoryAllocator.DeAllocate((long)addr, size);
+                    return new { success = true };
+                }
+                catch (Exception ex)
+                {
+                    return new { success = false, error = ex.Message };
+                }
+            });
+        }
+
+        [
+            McpServerTool(Name = "set_memory_protection"),
+            Description("Set memory protection for a region")
+        ]
+        public static object SetMemoryProtection(
+            string address,
+            int size,
+            bool readable = true,
+            bool writable = true,
+            bool executable = false
+        )
+        {
+            return CeLuaGate.Run<object>(() =>
+            {
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(address))
+                        return new { success = false, error = "Address parameter is required" };
+
+                    if (!TryParseAddress(address, out ulong addr))
+                        return new { success = false, error = "Invalid address format" };
+
+                    MemoryAllocator.SetMemoryProtection(
+                        (long)addr,
+                        size,
+                        readable,
+                        writable,
+                        executable
+                    );
+                    return new { success = true };
+                }
+                catch (Exception ex)
+                {
+                    return new { success = false, error = ex.Message };
+                }
+            });
+        }
+
+        [
+            McpServerTool(Name = "set_full_access"),
+            Description("Set full access (RWX) for a memory region")
+        ]
+        public static object FullAccess(string address, int size)
+        {
+            return CeLuaGate.Run<object>(() =>
+            {
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(address))
+                        return new { success = false, error = "Address parameter is required" };
+
+                    if (!TryParseAddress(address, out ulong addr))
+                        return new { success = false, error = "Invalid address format" };
+
+                    MemoryAllocator.FullAccess((long)addr, size);
+                    return new { success = true };
+                }
+                catch (Exception ex)
+                {
+                    return new { success = false, error = ex.Message };
+                }
+            });
         }
 
         private static bool TryParseAddress(string address, out ulong result) =>
-            ulong.TryParse(address.Replace("0x", "").Replace("0X", ""),
-                System.Globalization.NumberStyles.HexNumber, null, out result);
+            ulong.TryParse(
+                address.Replace("0x", "").Replace("0X", ""),
+                System.Globalization.NumberStyles.HexNumber,
+                null,
+                out result
+            );
 
         private static object WriteBytes(ulong address, string value)
         {
-            var bytes = value.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries)
+            var bytes = value
+                .Split([' ', ','], StringSplitOptions.RemoveEmptyEntries)
                 .Select(b => Convert.ToByte(b, 16))
                 .ToArray();
             MemoryAccess.WriteBytes(address, bytes);
@@ -178,7 +345,12 @@ namespace Tools
             return v;
         }
 
-        private static object WriteString(ulong address, string value, int? maxLength, bool wideChar)
+        private static object WriteString(
+            ulong address,
+            string value,
+            int? maxLength,
+            bool wideChar
+        )
         {
             string text = value;
             if (maxLength.HasValue && text.Length > maxLength.Value)
