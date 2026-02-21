@@ -386,3 +386,6 @@ celua.txt
 
 # Claude Code
 .claude/settings.local.json
+
+# Opencode local state
+.sisyphus/
