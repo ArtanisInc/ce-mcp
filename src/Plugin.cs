@@ -263,6 +263,20 @@ namespace CEMCP
         {
             if (!isServerRunning) return;
 
+            try
+            {
+                CeLuaGate.Run(() =>
+                {
+                    _ = Tools.ScanTool.CleanupIndependentScannersUnsafe();
+                });
+            }
+            catch (Exception ex)
+            {
+                PluginContext.Lua.DoString(
+                    $"print('Warning: cleanup_independent_scanners failed: {ex.Message.Replace("'", "\\'")}')"
+                );
+            }
+
             mcpServer?.Stop();
             mcpServer = null;
             isServerRunning = false;

@@ -26,6 +26,58 @@ namespace Tools
             StringComparer.OrdinalIgnoreCase
         );
 
+        internal static object CleanupIndependentScannersUnsafe()
+        {
+            var removed = new List<string>();
+            var errors = new List<string>();
+
+            foreach (var kvp in independentScanners)
+            {
+                if (!independentScanners.TryRemove(kvp.Key, out var scanner))
+                    continue;
+
+                removed.Add(kvp.Key);
+
+                try
+                {
+                    scanner.DeinitializeFoundList();
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"{kvp.Key}: {ex.Message}");
+                }
+            }
+
+            return new
+            {
+                removedCount = removed.Count,
+                removed,
+                errors,
+            };
+        }
+
+        [
+            McpServerTool(Name = "cleanup_independent_scanners"),
+            Description(
+                "Best-effort cleanup: removes all independent scanners created via memory_scan(scannerName=...)"
+            )
+        ]
+        public static object CleanupIndependentScanners()
+        {
+            return CeLuaGate.Run<object>(() =>
+            {
+                try
+                {
+                    var result = CleanupIndependentScannersUnsafe();
+                    return new { success = true, result };
+                }
+                catch (Exception ex)
+                {
+                    return new { success = false, error = ex.Message };
+                }
+            });
+        }
+
         /// <summary>
         /// Checks if a process is currently attached in Cheat Engine.
         /// </summary>
