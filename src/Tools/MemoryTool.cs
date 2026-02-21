@@ -13,6 +13,10 @@ namespace Tools
     [McpServerToolType]
     public class MemoryTool
     {
+        private const int MaxReadBytes = 65536;
+        private const int MaxWriteBytes = 65536;
+        private const int MaxStringLength = 65536;
+
         private MemoryTool() { }
 
         /// <summary>
@@ -63,9 +67,10 @@ namespace Tools
                         "bytes" => !string.IsNullOrEmpty(byteCount)
                         && int.TryParse(byteCount, out var bc)
                         && bc > 0
+                        && bc <= MaxReadBytes
                             ? MemoryAccess.ReadBytes(addr, bc)
                             : throw new ArgumentException(
-                                "ByteCount is required for bytes and must be > 0"
+                                $"ByteCount is required for bytes and must be between 1 and {MaxReadBytes}"
                             ),
 
                         "integer" or "int32" or "int" => MemoryAccess.ReadInteger(addr),
@@ -78,9 +83,10 @@ namespace Tools
                         "string" => !string.IsNullOrEmpty(maxLength)
                         && int.TryParse(maxLength, out var ml)
                         && ml > 0
+                        && ml <= MaxStringLength
                             ? MemoryAccess.ReadString(addr, ml, isWide)
                             : throw new ArgumentException(
-                                "MaxLength is required for string and must be > 0"
+                                $"MaxLength is required for string and must be between 1 and {MaxStringLength}"
                             ),
 
                         _ => throw new NotSupportedException($"Unsupported data type: {dataType}"),
@@ -137,6 +143,15 @@ namespace Tools
                         && int.TryParse(maxLength, out var parsedMl)
                             ? parsedMl
                             : (int?)null;
+
+                    if (ml.HasValue && (ml.Value <= 0 || ml.Value > MaxStringLength))
+                    {
+                        return new
+                        {
+                            success = false,
+                            error = $"MaxLength must be between 1 and {MaxStringLength}",
+                        };
+                    }
 
                     object written = dataType.ToLower() switch
                     {
@@ -294,6 +309,12 @@ namespace Tools
                 .Split([' ', ','], StringSplitOptions.RemoveEmptyEntries)
                 .Select(b => Convert.ToByte(b, 16))
                 .ToArray();
+
+            if (bytes.Length == 0)
+                throw new ArgumentException("Value must contain at least one byte");
+            if (bytes.Length > MaxWriteBytes)
+                throw new ArgumentException($"Too many bytes (max {MaxWriteBytes})");
+
             MemoryAccess.WriteBytes(address, bytes);
             return bytes;
         }
@@ -353,8 +374,16 @@ namespace Tools
         )
         {
             string text = value;
+
+            if (maxLength.HasValue && (maxLength.Value <= 0 || maxLength.Value > MaxStringLength))
+                throw new ArgumentException($"MaxLength must be between 1 and {MaxStringLength}");
+
             if (maxLength.HasValue && text.Length > maxLength.Value)
                 text = text[..maxLength.Value];
+
+            if (text.Length > MaxStringLength)
+                text = text[..MaxStringLength];
+
             MemoryAccess.WriteString(address, text, wideChar);
             return text;
         }
