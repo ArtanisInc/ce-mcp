@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -55,7 +56,9 @@ namespace CEMCP.Auth
             if (!Request.Headers.TryGetValue("Authorization", out var values))
                 return null;
 
-            var header = values.ToString();
+            var header = values.FirstOrDefault();
+            if (string.IsNullOrEmpty(header)) return null;
+
             const string prefix = "Bearer ";
             if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 return null;
@@ -68,17 +71,20 @@ namespace CEMCP.Auth
         {
             if (!Request.Headers.TryGetValue("X-MCP-Token", out var values))
                 return null;
-            var token = values.ToString().Trim();
+            var token = values.FirstOrDefault()?.Trim();
             return string.IsNullOrEmpty(token) ? null : token;
         }
 
         private string? TryGetQueryToken()
         {
-            // Some SSE clients can’t set headers easily.
+            // Restrict query parameter token acceptance ONLY to the SSE path ("/sse")
+            if (!Request.Path.Equals("/sse", StringComparison.OrdinalIgnoreCase))
+                return null;
+
             var query = Request.Query;
-            var token = query["token"].ToString();
+            var token = query["token"].FirstOrDefault();
             if (string.IsNullOrEmpty(token))
-                token = query["access_token"].ToString();
+                token = query["access_token"].FirstOrDefault();
             return string.IsNullOrEmpty(token) ? null : token;
         }
 

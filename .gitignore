@@ -389,3 +389,6 @@ celua.txt
 
 # Opencode local state
 .sisyphus/
+
+# Codex local state
+.omx/

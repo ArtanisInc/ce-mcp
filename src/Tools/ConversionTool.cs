@@ -6,6 +6,9 @@ using ModelContextProtocol.Server;
 
 namespace Tools
 {
+    /// <summary>
+    /// Tools for data conversion and hashing.
+    /// </summary>
     [McpServerToolType]
     public class ConversionTool
     {
@@ -13,11 +16,11 @@ namespace Tools
 
         [
             McpServerTool(Name = "convert_string"),
-            Description("Convert string between formats (md5, ansitoutf8, utf8toansi)")
+            Description("Converts strings between different encoding formats or generates a hash. Supported: 'md5', 'ansitoutf8', 'utf8toansi'.")
         ]
         public static object ConvertString(
-            [Description("The input string to convert")] string input,
-            [Description("Conversion type: 'md5', 'ansitoutf8', 'utf8toansi'")]
+            [Description("The string to convert")] string input,
+            [Description("The target conversion type: 'md5', 'ansitoutf8', or 'utf8toansi'")]
                 string conversionType
         )
         {

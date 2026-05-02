@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace CEMCP
 {
@@ -16,6 +17,7 @@ namespace CEMCP
             Gate.Wait();
             try
             {
+                CESDK.Classes.CEObjectWrapper.ProcessDeferredDisposals();
                 action();
             }
             finally
@@ -29,6 +31,35 @@ namespace CEMCP
             Gate.Wait();
             try
             {
+                CESDK.Classes.CEObjectWrapper.ProcessDeferredDisposals();
+                return func();
+            }
+            finally
+            {
+                Gate.Release();
+            }
+        }
+
+        public static async Task RunAsync(Action action)
+        {
+            await Gate.WaitAsync();
+            try
+            {
+                CESDK.Classes.CEObjectWrapper.ProcessDeferredDisposals();
+                action();
+            }
+            finally
+            {
+                Gate.Release();
+            }
+        }
+
+        public static async Task<T> RunAsync<T>(Func<T> func)
+        {
+            await Gate.WaitAsync();
+            try
+            {
+                CESDK.Classes.CEObjectWrapper.ProcessDeferredDisposals();
                 return func();
             }
             finally

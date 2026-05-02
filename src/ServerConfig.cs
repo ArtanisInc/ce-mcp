@@ -12,7 +12,18 @@ namespace CEMCP
     {
         public static string ConfigHost { get; set; } = "127.0.0.1";
         public static int ConfigPort { get; set; } = 6300;
-        public static string ConfigBaseUrl => $"http://{ConfigHost}:{ConfigPort}";
+        public static string ConfigBaseUrl
+        {
+            get
+            {
+                var host = ConfigHost;
+                if (IPAddress.TryParse(host, out var ip) && ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+                {
+                    host = $"[{host}]";
+                }
+                return $"http://{host}:{ConfigPort}";
+            }
+        }
         public static string ConfigServerName { get; set; } = "Cheat Engine MCP Server";
         public static string ConfigAuthToken { get; set; } = "";
         public static bool ConfigAllowNonLoopback { get; set; } = false;
@@ -75,31 +86,24 @@ namespace CEMCP
 
         public static void SaveToFile()
         {
-            try
-            {
-                var configDir = Path.GetDirectoryName(ConfigFilePath);
-                if (configDir != null && !Directory.Exists(configDir))
-                    Directory.CreateDirectory(configDir);
+            var configDir = Path.GetDirectoryName(ConfigFilePath);
+            if (configDir != null && !Directory.Exists(configDir))
+                Directory.CreateDirectory(configDir);
 
-                var config = new ConfigData
-                {
-                    Host = ConfigHost,
-                    Port = ConfigPort,
-                    ServerName = ConfigServerName,
-                    AuthToken = ConfigAuthToken,
-                    AllowNonLoopback = ConfigAllowNonLoopback,
-                };
-
-                var json = JsonSerializer.Serialize(
-                    config,
-                    SourceGenerationContext.Default.ConfigData
-                );
-                File.WriteAllText(ConfigFilePath, json);
-            }
-            catch
+            var config = new ConfigData
             {
-                // Ignore save errors for now
-            }
+                Host = ConfigHost,
+                Port = ConfigPort,
+                ServerName = ConfigServerName,
+                AuthToken = ConfigAuthToken,
+                AllowNonLoopback = ConfigAllowNonLoopback,
+            };
+
+            var json = JsonSerializer.Serialize(
+                config,
+                SourceGenerationContext.Default.ConfigData
+            );
+            File.WriteAllText(ConfigFilePath, json);
         }
 
         public static string GetValidatedBaseUrl()
@@ -126,7 +130,19 @@ namespace CEMCP
                 return;
 
             ConfigAuthToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-            SaveToFile();
+            try
+            {
+                SaveToFile();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Warning: Could not save auth token to config file.");
+                Console.WriteLine($"Error: {ex.Message}");
+                Console.WriteLine(
+                    "An MCP auth token was generated in memory but was not printed. "
+                        + "Set MCP_AUTH_TOKEN manually or fix the config directory permissions."
+                );
+            }
         }
 
         private static bool IsLoopbackHost(string host)
