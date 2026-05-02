@@ -1,249 +1,505 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
+using CEMCP;
 using CESDK.Classes;
 using ModelContextProtocol.Server;
 using static CESDK.CESDK;
 
 namespace Tools
 {
+    /// <summary>
+    /// Tools for managing Cheat Engine's Address List (cheat table entries).
+    /// </summary>
     [McpServerToolType]
     public class AddressListTool
     {
         private AddressListTool() { }
 
-        [McpServerTool(Name = "get_address_list"), Description("Get all memory records in the cheat table")]
+        [
+            McpServerTool(Name = "get_address_list"),
+            Description("Retrieves all memory records currently in the active Cheat Engine address list (cheat table).")
+        ]
         public static object GetAddressList()
         {
-            try
+            return CeLuaGate.Run<object>(() =>
             {
-                var records = Synchronize(() =>
+                try
                 {
-                    var al = new AddressList();
-                    var result = new List<object>();
-                    for (int i = 0; i < al.Count; i++)
+                    var records = Synchronize(() =>
                     {
-                        var r = al.GetMemoryRecord(i);
-                        result.Add(new
+                        using var al = new AddressList();
+                        var result = new List<object>();
+                        for (int i = 0; i < al.Count; i++)
                         {
-                            id = r.ID,
-                            index = r.Index,
-                            description = r.Description,
-                            address = r.Address,
-                            value = r.Value,
-                            active = r.Active
-                        });
-                    }
-                    return result;
-                });
+                            var r = al.GetMemoryRecord(i);
+                            result.Add(
+                                new
+                                {
+                                    id = r.ID,
+                                    index = r.Index,
+                                    description = r.Description,
+                                    address = r.Address,
+                                    value = r.Value,
+                                    active = r.Active,
+                                    offsets = GetOffsetsString(r),
+                                }
+                            );
+                        }
+                        return result;
+                    });
 
-                return new { success = true, count = records.Count, records };
-            }
-            catch (Exception ex)
-            {
-                return new { success = false, error = ex.Message };
-            }
-        }
-
-        [McpServerTool(Name = "add_memory_record"), Description("Add a new memory record to the cheat table. Supports pointer records: set offsets to a comma-separated list of hex/decimal offsets in outermost-to-innermost order (e.g. '0x10,0x18' means dereference base, add 0x10, dereference, add 0x18 to get final address). Leave offsets empty for a plain address record.")]
-        public static object AddMemoryRecord(
-            [Description("Description for the memory record")] string description = "New Entry",
-            [Description("Memory address or pointer base (e.g. '0x1234ABCD' or '\"Tutorial-x86_64.exe\"+1A2B3C')")] string address = "0",
-            [Description("Variable type (e.g. vtDword, vtFloat, etc.)")] VariableType varType = VariableType.vtDword,
-            [Description("Initial value")] string value = "0",
-            [Description("Comma-separated pointer offsets in outermost-to-innermost order, hex or decimal (e.g. '0x10,0x18,0x0,0x18' means: deref base+0x10, deref+0x18, deref+0x0, deref+0x18 = final address). Omit for a plain address.")] string offsets = "",
-            [Description("Freeze/activate the record immediately after adding")] bool active = false)
-        {
-            try
-            {
-                var offsetList = new List<long>();
-                if (!string.IsNullOrWhiteSpace(offsets))
-                {
-                    foreach (var part in offsets.Split(','))
-                    {
-                        var trimmed = part.Trim();
-                        offsetList.Add(trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-                            ? Convert.ToInt64(trimmed, 16)
-                            : long.Parse(trimmed));
-                    }
-                }
-
-                var record = Synchronize(() =>
-                {
-                    var al = new AddressList();
-                    var r = al.CreateMemoryRecord();
-                    r.Description = description;
-                    r.Address = address;
-                    r.VarType = varType;
-                    if (offsetList.Count > 0)
-                    {
-                        // CE stores offsets innermost-first: index 0 = final offset (closest to value)
-                        offsetList.Reverse();
-                        r.OffsetCount = offsetList.Count;
-                        for (int i = 0; i < offsetList.Count; i++)
-                            r.SetOffset(i, offsetList[i]);
-                    }
-                    r.Value = value;
-                    if (active)
-                        r.Active = true;
                     return new
                     {
-                        id = r.ID,
-                        description = r.Description,
-                        address = r.Address,
-                        offsetCount = r.OffsetCount,
-                        value = r.Value,
-                        active = r.Active
+                        success = true,
+                        count = records.Count,
+                        records,
                     };
-                });
-
-                return new { success = true, record };
-            }
-            catch (Exception ex)
-            {
-                return new { success = false, error = ex.Message };
-            }
+                }
+                catch (Exception ex)
+                {
+                    return new { success = false, error = ex.Message };
+                }
+            });
         }
 
-#pragma warning disable S107 // Methods should not have too many parameters
-#pragma warning disable S3776 // Cognitive Complexity
-        [McpServerTool(Name = "update_memory_record"), Description("Update a memory record (find by id, index, or description). Supports updating pointer offsets via newOffsets.")]
-        public static object UpdateMemoryRecord(
-            [Description("Record ID to find")] int? id = null,
-            [Description("Record index to find")] int? index = null,
-            [Description("Record description to find")] string? description = null,
-            [Description("New description")] string? newDescription = null,
-            [Description("New address")] string? newAddress = null,
-            [Description("New variable type")] VariableType? newVarType = null,
-            [Description("New value")] string? newValue = null,
-            [Description("Set active state")] bool? active = null,
-            [Description("New comma-separated pointer offsets in hex or decimal (e.g. '0x7E8'). Set to empty string to clear offsets.")] string? newOffsets = null)
+        [
+            McpServerTool(Name = "add_memory_record"),
+            Description("Adds a new memory record to the cheat table. Supports pointers with multiple offsets.")
+        ]
+        public static object AddMemoryRecord(
+            [Description("Description for the memory record (label in the UI)")] string description = "New Entry",
+            [Description("Base memory address or expression")] string address = "0",
+            [Description(
+                "Variable type: 'vtByte', 'vtWord', 'vtDword', 'vtQword', 'vtSingle', 'vtDouble', 'vtString', 'vtByteArray', 'vtCustom', 'vtPointer'"
+            )]
+                string varType = "vtDword",
+            [Description("Initial value to set for the record")] string value = "0",
+            [Description("Offsets as comma-separated hex/dec (e.g. '0x10, 0x20') if this is a pointer")]
+                string offsets = ""
+        )
         {
-            try
+            return CeLuaGate.Run<object>(() =>
             {
-                var result = Synchronize(() =>
+                try
                 {
-                    var al = new AddressList();
-                    var r = FindRecord(al, id, index, description);
-                    if (r == null)
-                        return (object?)null;
-
-                    if (!string.IsNullOrEmpty(newDescription))
-                        r.Description = newDescription;
-                    if (!string.IsNullOrEmpty(newAddress))
-                        r.Address = newAddress;
-                    if (newVarType.HasValue)
-                        r.VarType = newVarType.Value;
-                    if (newOffsets != null)
+                    object? errorResult = null;
+                    var record = Synchronize(() =>
                     {
-                        if (string.IsNullOrWhiteSpace(newOffsets))
+                        using var al = new AddressList();
+                        var r = al.CreateMemoryRecord();
+                        r.Description = description;
+                        r.Address = address;
+
+                        if (Enum.TryParse<VariableType>(varType, true, out var vt))
                         {
-                            r.OffsetCount = 0;
+                            r.VarType = vt;
                         }
                         else
                         {
-                            var offsetList = new List<long>();
-                            foreach (var part in newOffsets.Split(','))
-                            {
-                                var trimmed = part.Trim();
-                                offsetList.Add(trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-                                    ? Convert.ToInt64(trimmed, 16)
-                                    : long.Parse(trimmed));
-                            }
-                            // CE stores offsets innermost-first: index 0 = final offset (closest to value)
-                            offsetList.Reverse();
+                            errorResult = new { success = false, error = $"Invalid varType: {varType}" };
+                            return null;
+                        }
+
+                        if (!string.IsNullOrEmpty(offsets))
+                        {
+                            var offsetList = ParseOffsets(offsets);
                             r.OffsetCount = offsetList.Count;
                             for (int i = 0; i < offsetList.Count; i++)
+                            {
                                 r.SetOffset(i, offsetList[i]);
+                            }
                         }
-                    }
-                    if (!string.IsNullOrEmpty(newValue))
-                        r.Value = newValue;
-                    if (active.HasValue)
-                        r.Active = active.Value;
 
-                    return new
-                    {
-                        id = r.ID,
-                        description = r.Description,
-                        address = r.Address,
-                        offsetCount = r.OffsetCount,
-                        value = r.Value,
-                        active = r.Active
-                    };
-                });
+                        // Setting Value may attempt to write memory / interpret value and can fail
+                        // depending on target state / permissions. Do not fail the record creation.
+                        string? valueError = null;
+                        if (!string.IsNullOrEmpty(value))
+                        {
+                            try
+                            {
+                                r.Value = value;
+                            }
+                            catch (Exception ex)
+                            {
+                                valueError = ex.Message;
+                            }
+                        }
 
-                if (result == null)
-                    return new { success = false, error = "Record not found" };
+                        string? currentValue = null;
+                        if (valueError == null)
+                        {
+                            try
+                            {
+                                currentValue = r.Value;
+                            }
+                            catch
+                            {
+                                currentValue = null;
+                            }
+                        }
+                        return (object)new
+                        {
+                            id = r.ID,
+                            description = r.Description,
+                            address = r.Address,
+                            offsets = GetOffsetsString(r),
+                            value = currentValue,
+                            valueSet = valueError == null,
+                            valueError,
+                        };
+                    });
 
-                return new { success = true, record = result };
-            }
-            catch (Exception ex)
+                    if (errorResult != null) return errorResult;
+
+                    return new { success = true, record };
+                }
+                catch (Exception ex)
+                {
+                    return new { success = false, error = ex.Message };
+                }
+            });
+        }
+
+#pragma warning disable S107 // Methods should not have too many parameters
+        [
+            McpServerTool(Name = "update_memory_record"),
+            Description("Updates an existing memory record. Can modify description, address, type, value, and active state.")
+        ]
+        public static object UpdateMemoryRecord(
+            [Description("Numeric ID of the record to update")] string id = "",
+            [Description("0-based index of the record in the list")] string index = "",
+            [Description("Exact description of the record to update")] string description = "",
+            [Description("New description to set")] string newDescription = "",
+            [Description("New memory address expression to set")] string newAddress = "",
+            [Description("New variable type to set")] string newVarType = "",
+            [Description("New value to write")] string newValue = "",
+            [Description("Whether the record should be active/frozen (true/false)")] string active = "",
+            [Description("New offsets as comma-separated hex/dec if this is a pointer")] string newOffsets = ""
+        )
+        {
+            return CeLuaGate.Run<object>(() =>
             {
-                return new { success = false, error = ex.Message };
-            }
+                try
+                {
+                    object? errorResult = null;
+                    var result = Synchronize(() =>
+                    {
+                        using var al = new AddressList();
+
+                        int? targetId =
+                            !string.IsNullOrEmpty(id) && int.TryParse(id, out var parsedId)
+                                ? parsedId
+                                : (int?)null;
+                        int? targetIndex =
+                            !string.IsNullOrEmpty(index) && int.TryParse(index, out var parsedIdx)
+                                ? parsedIdx
+                                : (int?)null;
+
+                        var r = FindRecord(al, targetId, targetIndex, description);
+                        if (r == null)
+                            return null;
+
+                        if (!string.IsNullOrEmpty(newDescription))
+                            r.Description = newDescription;
+                        if (!string.IsNullOrEmpty(newAddress))
+                            r.Address = newAddress;
+                        if (!string.IsNullOrEmpty(newVarType))
+                        {
+                            if (Enum.TryParse<VariableType>(newVarType, true, out var vt))
+                            {
+                                r.VarType = vt;
+                            }
+                            else
+                            {
+                                errorResult = new { success = false, error = $"Invalid varType: {newVarType}" };
+                                return null;
+                            }
+                        }
+                        if (!string.IsNullOrEmpty(newOffsets))
+                        {
+                            var offsetList = ParseOffsets(newOffsets);
+                            r.OffsetCount = offsetList.Count;
+                            for (int i = 0; i < offsetList.Count; i++)
+                            {
+                                r.SetOffset(i, offsetList[i]);
+                            }
+                        }
+                        if (!string.IsNullOrEmpty(newValue))
+                        {
+                            try
+                            {
+                                r.Value = newValue;
+                            }
+                            catch (Exception ex)
+                            {
+                                // Don't fail other edits (e.g. description/address). Return the warning.
+                                return new
+                                {
+                                    id = r.ID,
+                                    description = r.Description,
+                                    address = r.Address,
+                                    offsets = GetOffsetsString(r),
+                                    value = (string?)null,
+                                    active = r.Active,
+                                    valueSet = false,
+                                    valueError = ex.Message,
+                                };
+                            }
+                        }
+                        if (!string.IsNullOrEmpty(active))
+                        {
+                            if (bool.TryParse(active, out var isActive))
+                                r.Active = isActive;
+                        }
+
+                        return (object)new
+                        {
+                            id = r.ID,
+                            description = r.Description,
+                            address = r.Address,
+                            offsets = GetOffsetsString(r),
+                            value = r.Value,
+                            active = r.Active,
+                            valueSet = true,
+                            valueError = (string?)null,
+                        };
+                    });
+
+                    if (errorResult != null) return errorResult;
+                    if (result == null)
+                        return new { success = false, error = "Record not found" };
+
+                    return new { success = true, record = result };
+                }
+                catch (Exception ex)
+                {
+                    return new { success = false, error = ex.Message };
+                }
+            });
         }
 #pragma warning restore S107
-#pragma warning restore S3776
 
-        [McpServerTool(Name = "delete_memory_record"), Description("Delete a memory record (find by id, index, or description)")]
+        [
+            McpServerTool(Name = "delete_memory_record"),
+            Description("Deletes a specific memory record from the cheat table list.")
+        ]
         public static object DeleteMemoryRecord(
-            [Description("Record ID to find")] int? id = null,
-            [Description("Record index to find")] int? index = null,
-            [Description("Record description to find")] string? description = null)
+            [Description("Numeric ID of the record to delete")] string id = "",
+            [Description("0-based index of the record to delete")] string index = "",
+            [Description("Exact description of the record to delete")] string description = ""
+        )
         {
-            try
+            return CeLuaGate.Run<object>(() =>
             {
-                var found = Synchronize(() =>
+                try
                 {
-                    var al = new AddressList();
-                    var r = FindRecord(al, id, index, description);
-                    if (r == null)
-                        return false;
+                    var found = Synchronize(() =>
+                    {
+                        using var al = new AddressList();
 
-                    al.DeleteMemoryRecord(r);
-                    return true;
-                });
+                        int? targetId =
+                            !string.IsNullOrEmpty(id) && int.TryParse(id, out var parsedId)
+                                ? parsedId
+                                : (int?)null;
+                        int? targetIndex =
+                            !string.IsNullOrEmpty(index) && int.TryParse(index, out var parsedIdx)
+                                ? parsedIdx
+                                : (int?)null;
 
-                if (!found)
-                    return new { success = false, error = "Record not found" };
+                        var r = FindRecord(al, targetId, targetIndex, description);
+                        if (r == null)
+                            return false;
 
-                return new { success = true };
-            }
-            catch (Exception ex)
-            {
-                return new { success = false, error = ex.Message };
-            }
+                        al.DeleteMemoryRecord(r);
+                        return true;
+                    });
+
+                    if (!found)
+                        return new { success = false, error = "Record not found" };
+
+                    return new { success = true };
+                }
+                catch (Exception ex)
+                {
+                    return new { success = false, error = ex.Message };
+                }
+            });
         }
 
-        [McpServerTool(Name = "clear_address_list"), Description("Clear all memory records from the cheat table")]
+        [
+            McpServerTool(Name = "clear_address_list"),
+            Description("Removes all entries from the active Cheat Engine address list (cheat table).")
+        ]
         public static object ClearAddressList()
         {
-            try
+            return CeLuaGate.Run<object>(() =>
             {
-                Synchronize(() =>
+                try
                 {
-                    var al = new AddressList();
-                    al.Clear();
-                });
-                return new { success = true };
-            }
-            catch (Exception ex)
-            {
-                return new { success = false, error = ex.Message };
-            }
+                    Synchronize(() =>
+                    {
+                        using var al = new AddressList();
+                        al.Clear();
+                    });
+                    return new { success = true };
+                }
+                catch (Exception ex)
+                {
+                    return new { success = false, error = ex.Message };
+                }
+            });
         }
 
-        private static MemoryRecord? FindRecord(AddressList al, int? id, int? index, string? description)
+        private static MemoryRecord? FindRecord(
+            AddressList al,
+            int? id,
+            int? index,
+            string? description
+        )
         {
             if (id.HasValue)
                 return al.GetMemoryRecordByID(id.Value);
             if (index.HasValue)
                 return al.GetMemoryRecord(index.Value);
             if (!string.IsNullOrEmpty(description))
-                return al.GetMemoryRecordByDescription(description);
+            {
+                // CE's getMemoryRecordByDescription may return nil on some setups
+                // (e.g. cache not built yet). Fall back to manual scan.
+                var direct = al.GetMemoryRecordByDescription(description);
+                if (direct != null)
+                    return direct;
+
+                // Some CE builds require rebuilding the description cache before
+                // getMemoryRecordByDescription starts returning results.
+                try
+                {
+                    al.RebuildDescriptionCache();
+                }
+                catch (Exception ex)
+                {
+                    // ignore and fall back to manual scan
+                    System.Diagnostics.Debug.WriteLine(ex);
+                }
+
+                direct = al.GetMemoryRecordByDescription(description);
+                if (direct != null)
+                    return direct;
+
+                var count = al.Count;
+                for (int i = 0; i < count; i++)
+                {
+                    MemoryRecord r;
+                    try
+                    {
+                        r = al.GetMemoryRecord(i);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (
+                        string.Equals(
+                            r.Description,
+                            description,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                        return r;
+                }
+
+                return null;
+            }
 
             throw new ArgumentException("Provide id, index, or description to find the record");
+        }
+
+        private static string GetOffsetsString(MemoryRecord r)
+        {
+            int count = r.OffsetCount;
+            if (count <= 0)
+                return "";
+
+            var offsets = new List<string>(count);
+            for (int i = 0; i < count; i++)
+            {
+                offsets.Add($"0x{r.GetOffset(i):X}");
+            }
+            return string.Join(",", offsets);
+        }
+
+        private static List<long> ParseOffsets(string offsets)
+        {
+            if (string.IsNullOrWhiteSpace(offsets))
+                return new List<long>();
+
+            var parts = offsets.Split(
+                new[] { ',', ' ', '\t', '\r', '\n' },
+                StringSplitOptions.RemoveEmptyEntries
+            );
+
+            var list = new List<long>(parts.Length);
+            foreach (var part in parts)
+            {
+                if (!TryParseNumber(part, out var value))
+                    throw new ArgumentException($"Invalid offset: {part}");
+                list.Add(value);
+            }
+            return list;
+        }
+
+        private static bool TryParseNumber(string text, out long value)
+        {
+            value = 0;
+            var trimmed = text.Trim();
+            if (string.IsNullOrEmpty(trimmed))
+                return false;
+
+            int sign = 1;
+            if (trimmed.StartsWith("-"))
+            {
+                sign = -1;
+                trimmed = trimmed.Substring(1).Trim();
+            }
+            else if (trimmed.StartsWith("+"))
+            {
+                trimmed = trimmed.Substring(1).Trim();
+            }
+
+            bool success;
+            if (trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                success = long.TryParse(
+                    trimmed[2..],
+                    NumberStyles.HexNumber,
+                    CultureInfo.InvariantCulture,
+                    out value
+                );
+            }
+            else
+            {
+                success =
+                    long.TryParse(
+                        trimmed,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out value
+                    )
+                    || long.TryParse(
+                        trimmed,
+                        NumberStyles.HexNumber,
+                        CultureInfo.InvariantCulture,
+                        out value
+                    );
+            }
+
+            if (success)
+            {
+                value *= sign;
+            }
+            return success;
         }
     }
 }

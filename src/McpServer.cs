@@ -1,77 +1,134 @@
 using System;
 using System.Threading;
+using System.Threading.RateLimiting;
 using System.Threading.Tasks;
+using CEMCP.Auth;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace CEMCP
 {
-    public class McpServer
+    public class McpSseServer
     {
+        private readonly object _lifecycleLock = new();
         private WebApplication? _app;
         private CancellationTokenSource? _cts;
 
         public void Start(string baseUrl)
         {
-            if (_app != null) return; // Already running
-
-            var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+            lock (_lifecycleLock)
             {
-                Args = [],
-                ContentRootPath = System.IO.Path.GetTempPath(),
-                WebRootPath = System.IO.Path.GetTempPath()
-            });
+                if (_app != null)
+                    return; // Already running
 
-            // Setup MCP server with Streamable HTTP transport and all tools
-            builder.Services.AddMcpServer(options =>
-            {
-                options.ServerInfo = new()
+                var validatedBaseUrl = ServerConfig.GetValidatedBaseUrl();
+
+                var builder = WebApplication.CreateBuilder(
+                    new WebApplicationOptions
+                    {
+                        Args = [],
+                        ContentRootPath = System.IO.Path.GetTempPath(),
+                        WebRootPath = System.IO.Path.GetTempPath(),
+                    }
+                );
+
+                builder
+                    .Services.AddAuthentication(McpTokenAuthDefaults.Scheme)
+                    .AddScheme<AuthenticationSchemeOptions, McpTokenAuthHandler>(
+                        McpTokenAuthDefaults.Scheme,
+                        _ => { }
+                    );
+
+                builder.Services.AddAuthorization();
+
+                builder.Services.AddRateLimiter(options =>
                 {
-                    Name = ServerConfig.ConfigServerName,
-                    Version = System.Reflection.Assembly.GetExecutingAssembly()
-                        .GetName().Version?.ToString() ?? "1.0.0"
-                };
-            })
-            .WithHttpTransport(options =>
-            {
-                options.Stateless = true;
-            })
-            .WithTools<Tools.ProcessTool>()
-            .WithTools<Tools.LuaExecutionTool>()
-            .WithTools<Tools.MemoryTool>()
-            .WithTools<Tools.ScanTool>()
-            .WithTools<Tools.AssemblyTool>()
-            .WithTools<Tools.ConversionTool>()
-            .WithTools<Tools.AddressListTool>()
-            .WithTools<Tools.AutoAssemblyTool>()
-            .WithTools<Tools.MemoryViewTool>()
-            .WithTools<Tools.SymbolTool>()
-            .WithTools<Tools.DebuggerTool>();
+                    options.RejectionStatusCode = 429;
+                    options.AddPolicy(
+                        "mcp",
+                        httpContext =>
+                            RateLimitPartition.GetFixedWindowLimiter(
+                                httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                                _ => new FixedWindowRateLimiterOptions
+                                {
+                                    PermitLimit = 60,
+                                    Window = TimeSpan.FromSeconds(10),
+                                    QueueLimit = 0,
+                                }
+                            )
+                    );
+                });
 
-            builder.Logging.ClearProviders(); // Disable logging
-            builder.WebHost.UseUrls(baseUrl);
+                // Setup MCP server with SSE transport and all tools
+                builder
+                    .Services.AddMcpServer(options =>
+                    {
+                        options.ServerInfo = new()
+                        {
+                            Name = ServerConfig.ConfigServerName,
+                            Version =
+                                System
+                                    .Reflection.Assembly.GetExecutingAssembly()
+                                    .GetName()
+                                    .Version?.ToString()
+                                ?? "1.0.0",
+                        };
+                    })
+                    .WithHttpTransport()
+                    .WithTools<Tools.ProcessTool>()
+                    .WithTools<Tools.LuaExecutionTool>()
+                    .WithTools<Tools.MemoryTool>()
+                    .WithTools<Tools.ScanTool>()
+                    .WithTools<Tools.AssemblyTool>()
+                    .WithTools<Tools.AnalysisTool>()
+                    .WithTools<Tools.ConversionTool>()
+                    .WithTools<Tools.AddressListTool>()
+                    .WithTools<Tools.TraceBreakpointTool>()
+                    .WithTools<Tools.MemoryViewTool>()
+                    .WithTools<Tools.SymbolTool>()
+                    .WithResources<Resources.ProcessResources>();
 
-            // Build app
-            _app = builder.Build();
+                builder.Logging.ClearProviders(); // Disable logging
+                builder.WebHost.UseUrls(validatedBaseUrl);
 
-            // Map MCP endpoints (Streamable HTTP)
-            _app.MapMcp();
+                // Build app
+                _app = builder.Build();
 
-            // Start server in background
-            _cts = new CancellationTokenSource();
-            Task.Run(async () => await _app.RunAsync());
+                _app.UseRateLimiter();
+                _app.UseAuthentication();
+                _app.UseAuthorization();
+
+                // Map MCP endpoints (SSE + Streamable HTTP)
+                var mcpEndpoints = _app.MapMcp();
+                mcpEndpoints.RequireAuthorization();
+                mcpEndpoints.RequireRateLimiting("mcp");
+
+                // Start server
+                _cts = new CancellationTokenSource();
+                _app.StartAsync(_cts.Token).GetAwaiter().GetResult();
+            }
         }
 
         public void Stop()
         {
-            if (_app == null) return; // Not running
+            WebApplication? appToStop;
+            CancellationTokenSource? ctsToStop;
 
-            var appToStop = _app;
-            var ctsToStop = _cts;
-            _app = null;
-            _cts = null;
+            lock (_lifecycleLock)
+            {
+                if (_app == null)
+                    return; // Not running
+
+                appToStop = _app;
+                ctsToStop = _cts;
+                _app = null;
+                _cts = null;
+            }
 
             // Stop server in background (don't freeze CE)
             Task.Run(async () =>

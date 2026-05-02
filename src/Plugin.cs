@@ -1,32 +1,28 @@
-﻿using CEMCP;
-using CEMCP.Views;
-using CESDK;
-using System;
+﻿using System;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
-
+using CEMCP.Views;
+using CESDK;
 
 namespace CEMCP
 {
     public class McpPlugin : CheatEnginePlugin
     {
         private bool isServerRunning = false;
-        private McpServer? mcpServer;
+        private McpSseServer? mcpServer;
         private Window? configWindow = null;
         private Thread? configThread = null;
 
         public bool IsServerRunning => isServerRunning;
 
-
-
         public override string Name
         {
             get
             {
-                var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "Unknown";
+                var version =
+                    Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "Unknown";
                 return $"MCP Server for Cheat Engine v{version}";
             }
         }
@@ -47,7 +43,8 @@ namespace CEMCP
             PluginContext.Lua.RegisterFunction("update_button_text", UpdateButtonText);
             PluginContext.Lua.RegisterFunction("show_mcp_config", ShowMCPConfig);
 
-            PluginContext.Lua.DoString(@"
+            PluginContext.Lua.DoString(
+                @"
                 local m=MainForm.Menu
                 topm=createMenuItem(m)
                 topm.Caption='MCP'
@@ -66,7 +63,8 @@ namespace CEMCP
                     show_mcp_config()
                 end
                 topm.add(mcpConfigMenuItem)
-            ");
+            "
+            );
         }
 
         protected override void OnDisable()
@@ -74,7 +72,8 @@ namespace CEMCP
             StopMCPServer();
 
             // Remove menu items
-            PluginContext.Lua.DoString(@"
+            PluginContext.Lua.DoString(
+                @"
                 if mcpToggleMenuItem then
                     mcpToggleMenuItem.destroy()
                     mcpToggleMenuItem = nil
@@ -87,7 +86,8 @@ namespace CEMCP
                     topm.destroy()
                     topm = nil
                 end
-            ");
+            "
+            );
         }
 
         void ToggleMCPServer()
@@ -111,15 +111,17 @@ namespace CEMCP
                 if (configWindow != null && configThread != null && configThread.IsAlive)
                 {
                     // Bring existing window to front
-                    configWindow.Dispatcher?.BeginInvoke(new Action(() =>
-                    {
-                        if (configWindow.WindowState == WindowState.Minimized)
-                            configWindow.WindowState = WindowState.Normal;
-                        configWindow.Activate();
-                        configWindow.Topmost = true;
-                        configWindow.Topmost = false;
-                        configWindow.Focus();
-                    }));
+                    configWindow.Dispatcher?.BeginInvoke(
+                        new Action(() =>
+                        {
+                            if (configWindow.WindowState == WindowState.Minimized)
+                                configWindow.WindowState = WindowState.Normal;
+                            configWindow.Activate();
+                            configWindow.Topmost = true;
+                            configWindow.Topmost = false;
+                            configWindow.Focus();
+                        })
+                    );
                     return;
                 }
 
@@ -135,7 +137,8 @@ namespace CEMCP
                         {
                             configWindow = null;
                             System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvokeShutdown(
-                                System.Windows.Threading.DispatcherPriority.Background);
+                                System.Windows.Threading.DispatcherPriority.Background
+                            );
                         };
 
                         configWindow.Show();
@@ -151,21 +154,32 @@ namespace CEMCP
                         if (ex.InnerException != null)
                             msg += $" | Inner: {ex.InnerException.Message}";
 
-                        PluginContext.Lua.DoString($"print('Error: {msg.Replace("'", "\\'").Replace("\n", " ").Replace("\r", "")}')");
+                        CeLuaGate.Run(() =>
+                        {
+                            PluginContext.Lua.DoString(
+                                $"print('Error: {msg.Replace("'", "\\'").Replace("\n", " ").Replace("\r", "")}')"
+                            );
+                        });
 
                         try
                         {
                             var logPath = System.IO.Path.Combine(
-                                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                                Environment.GetFolderPath(
+                                    Environment.SpecialFolder.ApplicationData
+                                ),
                                 "CeMCP",
                                 "error.log"
                             );
-                            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(logPath)!);
-                            System.IO.File.AppendAllText(logPath,
-                                $"[{DateTime.Now}] Window Error: {ex.Message}\n" +
-                                $"Type: {ex.GetType().Name}\n" +
-                                $"Inner: {ex.InnerException?.Message}\n" +
-                                $"Stack: {ex.StackTrace}\n\n");
+                            System.IO.Directory.CreateDirectory(
+                                System.IO.Path.GetDirectoryName(logPath)!
+                            );
+                            System.IO.File.AppendAllText(
+                                logPath,
+                                $"[{DateTime.Now}] Window Error: {ex.Message}\n"
+                                    + $"Type: {ex.GetType().Name}\n"
+                                    + $"Inner: {ex.InnerException?.Message}\n"
+                                    + $"Stack: {ex.StackTrace}\n\n"
+                            );
                         }
                         catch
                         {
@@ -198,7 +212,7 @@ namespace CEMCP
             }
         }
 
-        public McpServer? GetServerWrapper()
+        public McpSseServer? GetServerWrapper()
         {
             return mcpServer;
         }
@@ -215,17 +229,22 @@ namespace CEMCP
 
         void StartMCPServer()
         {
-            if (isServerRunning) return;
+            if (isServerRunning)
+                return;
 
             try
             {
-                mcpServer = new McpServer();
+                mcpServer = new McpSseServer();
                 ServerConfig.LoadFromFile();
                 ServerConfig.LoadFromEnvironment(); // Environment variables override config file
-                mcpServer.Start(ServerConfig.ConfigBaseUrl);
+                ServerConfig.EnsureAuthToken();
+                var baseUrl = ServerConfig.GetValidatedBaseUrl();
+                mcpServer.Start(baseUrl);
 
                 isServerRunning = true;
-                PluginContext.Lua.DoString($"print('MCP Server started on: {ServerConfig.ConfigBaseUrl}')");
+                PluginContext.Lua.DoString(
+                    $"print('MCP SSE Server started on: {baseUrl} (auth required; open MCP -> Configure)')"
+                );
                 UpdateButtonText();
             }
             catch (Exception ex)
@@ -234,7 +253,9 @@ namespace CEMCP
                 if (ex.InnerException != null)
                     errorMsg += $"\nInner: {ex.InnerException.Message}";
 
-                PluginContext.Lua.DoString($"print('Error: {errorMsg.Replace("'", "\\'").Replace("\n", " ")}')");
+                PluginContext.Lua.DoString(
+                    $"print('Error: {errorMsg.Replace("'", "\\'").Replace("\n", " ")}')"
+                );
 
                 // Also try to write to a log file for debugging
                 try
@@ -245,11 +266,16 @@ namespace CEMCP
                         "error.log"
                     );
                     System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(logPath)!);
-                    System.IO.File.WriteAllText(logPath,
-                        $"[{DateTime.Now}] {errorMsg}\n" +
-                        $"Type: {ex.GetType().FullName}\n" +
-                        $"Stack: {ex.StackTrace}\n" +
-                        (ex.InnerException != null ? $"Inner Stack: {ex.InnerException.StackTrace}\n" : "")
+                    System.IO.File.WriteAllText(
+                        logPath,
+                        $"[{DateTime.Now}] {errorMsg}\n"
+                            + $"Type: {ex.GetType().FullName}\n"
+                            + $"Stack: {ex.StackTrace}\n"
+                            + (
+                                ex.InnerException != null
+                                    ? $"Inner Stack: {ex.InnerException.StackTrace}\n"
+                                    : ""
+                            )
                     );
                 }
                 catch
@@ -261,7 +287,8 @@ namespace CEMCP
 
         void StopMCPServer()
         {
-            if (!isServerRunning) return;
+            if (!isServerRunning)
+                return;
 
             try
             {
@@ -274,6 +301,20 @@ namespace CEMCP
             {
                 PluginContext.Lua.DoString(
                     $"print('Warning: cleanup_independent_scanners failed: {ex.Message.Replace("'", "\\'")}')"
+                );
+            }
+
+            try
+            {
+                CeLuaGate.Run(() =>
+                {
+                    _ = Tools.TraceBreakpointTool.ClearAllTraceBreakpointsUnsafe();
+                });
+            }
+            catch (Exception ex)
+            {
+                PluginContext.Lua.DoString(
+                    $"print('Warning: trace_clear_all_breakpoints failed: {ex.Message.Replace("'", "\\'")}')"
                 );
             }
 

@@ -392,3 +392,6 @@ celua.txt
 
 # Codex local state
 .omx/
+
+# Gemini local state
+.omg/

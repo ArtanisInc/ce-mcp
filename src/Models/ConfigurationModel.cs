@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
 
@@ -10,12 +9,13 @@ namespace CEMCP.Models
         private string _host = "127.0.0.1";
         private int _port = 6300;
         private string _serverName = "Cheat Engine MCP Server";
+        private string _authToken = "";
+        private bool _allowNonLoopback = false;
         private string _serverStatus = "Stopped";
         private Brush _serverStatusColor = new SolidColorBrush(Color.FromRgb(255, 0, 0));
         private string _testResult = "";
         private bool _isServerRunning = false;
         private bool _isDarkMode = false;
-        private readonly string _version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "Unknown";
 
         public string Host
         {
@@ -58,13 +58,40 @@ namespace CEMCP.Models
             }
         }
 
+        public string AuthToken
+        {
+            get => _authToken;
+            set
+            {
+                if (_authToken != value)
+                {
+                    _authToken = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public bool AllowNonLoopback
+        {
+            get => _allowNonLoopback;
+            set
+            {
+                if (_allowNonLoopback != value)
+                {
+                    _allowNonLoopback = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
         public string BaseUrl => $"http://{Host}:{Port}";
 
         public string SseUrl => $"{BaseUrl}/sse";
 
-        public string Version => _version;
-
-        public string StartStopButtonText => ServerStatus.Equals("running", System.StringComparison.CurrentCultureIgnoreCase) ? "Stop Server" : "Start Server";
+        public string StartStopButtonText =>
+            ServerStatus.Equals("running", System.StringComparison.CurrentCultureIgnoreCase)
+                ? "Stop Server"
+                : "Start Server";
 
         public bool IsServerRunning
         {
@@ -105,7 +132,10 @@ namespace CEMCP.Models
 
                     UpdateStatusColor();
 
-                    IsServerRunning = value.Equals("running", System.StringComparison.CurrentCultureIgnoreCase);
+                    IsServerRunning = value.Equals(
+                        "running",
+                        System.StringComparison.CurrentCultureIgnoreCase
+                    );
                     OnPropertyChanged(nameof(StartStopButtonText));
                 }
             }
@@ -139,9 +169,12 @@ namespace CEMCP.Models
 
         public void LoadFromServerConfig()
         {
+            ServerConfig.EnsureAuthToken();
             Host = ServerConfig.ConfigHost;
             Port = ServerConfig.ConfigPort;
             ServerName = ServerConfig.ConfigServerName;
+            AuthToken = ServerConfig.ConfigAuthToken;
+            AllowNonLoopback = ServerConfig.ConfigAllowNonLoopback;
         }
 
         public void SaveToServerConfig()
@@ -149,6 +182,9 @@ namespace CEMCP.Models
             ServerConfig.ConfigHost = Host;
             ServerConfig.ConfigPort = Port;
             ServerConfig.ConfigServerName = ServerName;
+            ServerConfig.ConfigAllowNonLoopback = AllowNonLoopback;
+            ServerConfig.ConfigAuthToken = AuthToken.Trim();
+            ServerConfig.EnsureAuthToken();
             ServerConfig.SaveToFile();
         }
 
@@ -159,30 +195,30 @@ namespace CEMCP.Models
             if (lowerStatus == "running")
             {
                 // Light green for dark mode, standard green for light mode
-                ServerStatusColor = _isDarkMode ?
-                    new SolidColorBrush(Color.FromRgb(76, 175, 80)) :
-                    new SolidColorBrush(Color.FromRgb(0, 128, 0));
+                ServerStatusColor = _isDarkMode
+                    ? new SolidColorBrush(Color.FromRgb(76, 175, 80))
+                    : new SolidColorBrush(Color.FromRgb(0, 128, 0));
             }
             else if (lowerStatus == "stopped")
             {
                 // Light red for dark mode, standard red for light mode
-                ServerStatusColor = _isDarkMode ?
-                    new SolidColorBrush(Color.FromRgb(244, 67, 54)) :
-                    new SolidColorBrush(Color.FromRgb(255, 0, 0));
+                ServerStatusColor = _isDarkMode
+                    ? new SolidColorBrush(Color.FromRgb(244, 67, 54))
+                    : new SolidColorBrush(Color.FromRgb(255, 0, 0));
             }
             else if (lowerStatus == "starting" || lowerStatus == "stopping")
             {
                 // Light orange for dark mode, standard orange for light mode
-                ServerStatusColor = _isDarkMode ?
-                    new SolidColorBrush(Color.FromRgb(255, 152, 0)) :
-                    new SolidColorBrush(Color.FromRgb(255, 165, 0));
+                ServerStatusColor = _isDarkMode
+                    ? new SolidColorBrush(Color.FromRgb(255, 152, 0))
+                    : new SolidColorBrush(Color.FromRgb(255, 165, 0));
             }
             else
             {
                 // Light gray for dark mode, standard gray for light mode
-                ServerStatusColor = _isDarkMode ?
-                    new SolidColorBrush(Color.FromRgb(158, 158, 158)) :
-                    new SolidColorBrush(Color.FromRgb(128, 128, 128));
+                ServerStatusColor = _isDarkMode
+                    ? new SolidColorBrush(Color.FromRgb(158, 158, 158))
+                    : new SolidColorBrush(Color.FromRgb(128, 128, 128));
             }
         }
 

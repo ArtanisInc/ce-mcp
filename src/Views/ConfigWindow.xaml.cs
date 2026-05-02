@@ -1,5 +1,6 @@
 using System;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -40,6 +41,7 @@ namespace CEMCP.Views
             bool running = IsServerRunning(_plugin);
             _viewModel.ServerStatus = running ? "Running" : "Stopped";
             openApiButton.IsEnabled = running;
+            copySseUrlWithTokenButton.IsEnabled = running;
         }
 
         private void SaveButton_Click(object sender, RoutedEventArgs e)
@@ -61,14 +63,19 @@ namespace CEMCP.Views
             try
             {
                 using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-                // Streamable HTTP requires Accept: application/json, text/event-stream
-                client.DefaultRequestHeaders.Add("Accept", "application/json, text/event-stream");
-                var content = new StringContent(
-                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}",
-                    System.Text.Encoding.UTF8, "application/json");
-                var response = await client.PostAsync(_viewModel.BaseUrl, content);
+
+                if (!string.IsNullOrWhiteSpace(_viewModel.AuthToken))
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                        "Bearer",
+                        _viewModel.AuthToken.Trim()
+                    );
+
+                var response = await client.GetAsync(
+                    $"{_viewModel.BaseUrl}/sse",
+                    HttpCompletionOption.ResponseHeadersRead
+                );
                 _viewModel.TestResult = response.IsSuccessStatusCode
-                    ? "✓ Connection successful! MCP Server is responding."
+                    ? "✓ Connection successful! MCP SSE Server is responding."
                     : $"✗ Server responded with status: {response.StatusCode}";
             }
             catch (HttpRequestException ex)
@@ -108,17 +115,60 @@ namespace CEMCP.Views
             }
         }
 
-        private void CopyUrlButton_Click(object sender, RoutedEventArgs e)
+        private void CopySseUrlButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                var url = _viewModel.BaseUrl;
+                var url = $"{_viewModel.BaseUrl}/sse";
                 Clipboard.SetText(url);
                 _viewModel.TestResult = $"Copied to clipboard: {url}";
             }
             catch (Exception ex)
             {
                 _viewModel.TestResult = $"Error copying URL: {ex.Message}";
+            }
+        }
+
+        private void CopySseUrlWithTokenButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(_viewModel.AuthToken))
+                {
+                    _viewModel.TestResult =
+                        "Auth token is empty. Save configuration to generate a token.";
+                    return;
+                }
+
+                var url =
+                    $"{_viewModel.BaseUrl}/sse?token={Uri.EscapeDataString(_viewModel.AuthToken.Trim())}";
+                Clipboard.SetText(url);
+                _viewModel.TestResult = "Copied SSE URL (with token) to clipboard.";
+            }
+            catch (Exception ex)
+            {
+                _viewModel.TestResult = $"Error copying URL: {ex.Message}";
+            }
+        }
+
+        private void CopyAuthHeaderButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(_viewModel.AuthToken))
+                {
+                    _viewModel.TestResult =
+                        "Auth token is empty. Save configuration to generate a token.";
+                    return;
+                }
+
+                var header = $"Authorization: Bearer {_viewModel.AuthToken.Trim()}";
+                Clipboard.SetText(header);
+                _viewModel.TestResult = "Copied Authorization header to clipboard.";
+            }
+            catch (Exception ex)
+            {
+                _viewModel.TestResult = $"Error copying header: {ex.Message}";
             }
         }
 
@@ -164,6 +214,9 @@ namespace CEMCP.Views
                         box.Background = brushes.TextBoxBg;
                         box.Foreground = brushes.Foreground;
                         box.BorderBrush = brushes.TextBoxBorder;
+                        break;
+                    case CheckBox cb:
+                        cb.Foreground = brushes.Foreground;
                         break;
                     case WrapPanel panel:
                         ApplyThemeToButtons(panel, brushes);
