@@ -135,117 +135,116 @@ Key components:
 - `src/ServerConfig.cs` - endpoint, token, and binding configuration.
 - `src/Tools/*.cs` - MCP tool surface.
 - `CESDK/src/Classes/*.cs` - managed wrappers around Cheat Engine Lua and CE objects.
-- `celua.txt` - local reference for Cheat Engine-specific Lua functions and variables.
 
 ## MCP tools
 
 ### Process and modules
 
-| Tool | Purpose |
-| --- | --- |
-| `get_process_list` | List running processes. |
-| `open_process` | Attach Cheat Engine to a process by name or PID. |
-| `list_modules` | List modules for the current or specified process. |
-| `enum_modules` | Enumerate modules with base, size, bitness, and path. |
-| `get_module_size` | Return the size of a loaded module. |
-| `list_memory_regions` | List memory regions from the process tool surface. |
-| `enum_memory_regions` | Enumerate memory regions with protection/state/type fields. |
-| `get_pointer_size` | Get or set pointer size used by CE for the target. |
-| `reinitialize_symbols` | Reload/re-parse symbols. |
-| `enable_symbols` | Enable Windows or kernel symbol support. |
-| `get_symbol_info` | Return symbol metadata. |
+| Tool                   | Purpose                                                     |
+| ---------------------- | ----------------------------------------------------------- |
+| `get_process_list`     | List running processes.                                     |
+| `open_process`         | Attach Cheat Engine to a process by name or PID.            |
+| `list_modules`         | List modules for the current or specified process.          |
+| `enum_modules`         | Enumerate modules with base, size, bitness, and path.       |
+| `get_module_size`      | Return the size of a loaded module.                         |
+| `list_memory_regions`  | List memory regions from the process tool surface.          |
+| `enum_memory_regions`  | Enumerate memory regions with protection/state/type fields. |
+| `get_pointer_size`     | Get or set pointer size used by CE for the target.          |
+| `reinitialize_symbols` | Reload/re-parse symbols.                                    |
+| `enable_symbols`       | Enable Windows or kernel symbol support.                    |
+| `get_symbol_info`      | Return symbol metadata.                                     |
 
 ### Address resolution and symbols
 
-| Tool | Purpose |
-| --- | --- |
-| `resolve_address` | Resolve CE address expressions to numeric addresses. |
+| Tool                    | Purpose                                                  |
+| ----------------------- | -------------------------------------------------------- |
+| `resolve_address`       | Resolve CE address expressions to numeric addresses.     |
 | `get_name_from_address` | Convert an address to symbol/module text when available. |
-| `get_rtti_classname` | Resolve RTTI class names for C++ objects when available. |
+| `get_rtti_classname`    | Resolve RTTI class names for C++ objects when available. |
 
 ### Memory access
 
-| Tool | Purpose |
-| --- | --- |
-| `read_memory` | Read bytes, integers, floats, doubles, and strings. |
-| `write_memory` | Write bytes, integers, floats, doubles, and strings. |
-| `read_pointer_chain` | Resolve pointer chains and read final values. |
-| `allocate_memory` | Allocate executable target memory. |
-| `deallocate_memory` | Free allocated target memory. |
-| `set_full_access` | Change a region to read/write/execute. |
+| Tool                    | Purpose                                                        |
+| ----------------------- | -------------------------------------------------------------- |
+| `read_memory`           | Read bytes, integers, floats, doubles, and strings.            |
+| `write_memory`          | Write bytes, integers, floats, doubles, and strings.           |
+| `read_pointer_chain`    | Resolve pointer chains and read final values.                  |
+| `allocate_memory`       | Allocate executable target memory.                             |
+| `deallocate_memory`     | Free allocated target memory.                                  |
+| `set_full_access`       | Change a region to read/write/execute.                         |
 | `set_memory_protection` | Set explicit read/write/execute flags and verify actual flags. |
-| `get_memory_protection` | Read actual memory protection flags. |
-| `checksum_memory` | Hash a memory region with MD5, SHA1, or SHA256. |
+| `get_memory_protection` | Read actual memory protection flags.                           |
+| `checksum_memory`       | Hash a memory region with MD5, SHA1, or SHA256.                |
 
 ### Scanning
 
-| Tool | Purpose |
-| --- | --- |
-| `aob_scan` | Scan for an Array of Bytes pattern. |
-| `memory_scan` | Start an exact/typed memory scan (`vtDword`, `vtString`, `vtByteArray`, etc.). |
-| `get_scan_results` | Retrieve results from a background scan. |
-| `reset_memory_scan` | Reset the main or named scanner. |
-| `cleanup_independent_scanners` | Destroy named independent scanners. |
-| `generate_signature` | Generate a bounded exact AOB signature; uniqueness is reported explicitly. |
-| `find_references` | Scan a bounded range for raw pointers to an address. |
-| `find_call_references` | Scan a bounded range for direct/indirect CALL references. |
+| Tool                           | Purpose                                                                        |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| `aob_scan`                     | Scan for an Array of Bytes pattern.                                            |
+| `memory_scan`                  | Start an exact/typed memory scan (`vtDword`, `vtString`, `vtByteArray`, etc.). |
+| `get_scan_results`             | Retrieve results from a background scan.                                       |
+| `reset_memory_scan`            | Reset the main or named scanner.                                               |
+| `cleanup_independent_scanners` | Destroy named independent scanners.                                            |
+| `generate_signature`           | Generate a bounded exact AOB signature; uniqueness is reported explicitly.     |
+| `find_references`              | Scan a bounded range for raw pointers to an address.                           |
+| `find_call_references`         | Scan a bounded range for direct/indirect CALL references.                      |
 
 ### Disassembly and assembly
 
-| Tool | Purpose |
-| --- | --- |
-| `disassemble` | Disassemble one instruction or get its size. |
-| `disassemble_range` | Disassemble a sequence of instructions. |
-| `disassemble_range_detailed` | Return parsed instruction details. |
-| `disassemble_bytes` | Disassemble raw bytes. |
-| `get_instruction_info` | Return address, size, bytes, mnemonic, operands, and branch info. |
-| `get_previous_opcodes` | Estimate previous instruction boundaries. |
-| `get_function_range` | Estimate function start/end around an address. |
-| `assemble` | Assemble one instruction into bytes. |
-| `auto_assemble_check` | Validate an Auto Assemble script. |
-| `auto_assemble` | Execute an Auto Assemble script. |
-| `generate_api_hook_script` | Generate a CE API hook script template. |
-| `set_comment` | Set a Memory View comment. |
+| Tool                         | Purpose                                                           |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `disassemble`                | Disassemble one instruction or get its size.                      |
+| `disassemble_range`          | Disassemble a sequence of instructions.                           |
+| `disassemble_range_detailed` | Return parsed instruction details.                                |
+| `disassemble_bytes`          | Disassemble raw bytes.                                            |
+| `get_instruction_info`       | Return address, size, bytes, mnemonic, operands, and branch info. |
+| `get_previous_opcodes`       | Estimate previous instruction boundaries.                         |
+| `get_function_range`         | Estimate function start/end around an address.                    |
+| `assemble`                   | Assemble one instruction into bytes.                              |
+| `auto_assemble_check`        | Validate an Auto Assemble script.                                 |
+| `auto_assemble`              | Execute an Auto Assemble script.                                  |
+| `generate_api_hook_script`   | Generate a CE API hook script template.                           |
+| `set_comment`                | Set a Memory View comment.                                        |
 
 ### Debugger and trace
 
-| Tool | Purpose |
-| --- | --- |
-| `debugger_start` | Start CE's debugger for the current process. |
-| `debugger_stop` | Stop the debugger. |
-| `debugger_status` | Return current debugger state. |
-| `debugger_set_breakpoint` | Set a debugger breakpoint. |
-| `debugger_remove_breakpoint` | Remove one debugger breakpoint. |
-| `debugger_clear_breakpoints` | Remove debugger breakpoints. |
-| `debugger_get_breakpoints` | List debugger breakpoints. |
-| `debugger_continue` | Continue from a break. |
-| `debugger_get_context` | Read CPU context. |
-| `debugger_set_register` | Set a CPU register value. |
-| `trace_set_breakpoint` | Set a non-blocking execution trace breakpoint. |
-| `trace_set_data_breakpoint` | Set a non-blocking hardware data breakpoint. |
-| `trace_list_breakpoints` | List trace breakpoints; addresses include hex and numeric forms. |
-| `trace_get_hits` | Retrieve captured trace hits. |
-| `trace_remove_breakpoint` | Remove one trace breakpoint. |
-| `trace_clear_all_breakpoints` | Clear trace breakpoints and hit buffers. |
+| Tool                          | Purpose                                                          |
+| ----------------------------- | ---------------------------------------------------------------- |
+| `debugger_start`              | Start CE's debugger for the current process.                     |
+| `debugger_stop`               | Stop the debugger.                                               |
+| `debugger_status`             | Return current debugger state.                                   |
+| `debugger_set_breakpoint`     | Set a debugger breakpoint.                                       |
+| `debugger_remove_breakpoint`  | Remove one debugger breakpoint.                                  |
+| `debugger_clear_breakpoints`  | Remove debugger breakpoints.                                     |
+| `debugger_get_breakpoints`    | List debugger breakpoints.                                       |
+| `debugger_continue`           | Continue from a break.                                           |
+| `debugger_get_context`        | Read CPU context.                                                |
+| `debugger_set_register`       | Set a CPU register value.                                        |
+| `trace_set_breakpoint`        | Set a non-blocking execution trace breakpoint.                   |
+| `trace_set_data_breakpoint`   | Set a non-blocking hardware data breakpoint.                     |
+| `trace_list_breakpoints`      | List trace breakpoints; addresses include hex and numeric forms. |
+| `trace_get_hits`              | Retrieve captured trace hits.                                    |
+| `trace_remove_breakpoint`     | Remove one trace breakpoint.                                     |
+| `trace_clear_all_breakpoints` | Clear trace breakpoints and hit buffers.                         |
 
 ### Cheat table/address list
 
-| Tool | Purpose |
-| --- | --- |
-| `get_address_list` | List active cheat table records. |
-| `add_memory_record` | Add a record, including pointer records with offsets. |
+| Tool                   | Purpose                                                             |
+| ---------------------- | ------------------------------------------------------------------- |
+| `get_address_list`     | List active cheat table records.                                    |
+| `add_memory_record`    | Add a record, including pointer records with offsets.               |
 | `update_memory_record` | Update description, address, type, offsets, value, or active state. |
-| `delete_memory_record` | Delete a record by ID, index, or description. |
-| `clear_address_list` | Remove all records. |
+| `delete_memory_record` | Delete a record by ID, index, or description.                       |
+| `clear_address_list`   | Remove all records.                                                 |
 
 ### Utility and runtime
 
-| Tool | Purpose |
-| --- | --- |
-| `execute_lua` | Execute Lua in Cheat Engine. Use only for trusted local workflows. |
-| `convert_string` | Convert ANSI/UTF-8 or compute MD5. |
-| `get_speedhack` | Read CE speedhack state. |
-| `set_speedhack` | Enable/disable or set CE speedhack speed. |
+| Tool             | Purpose                                                            |
+| ---------------- | ------------------------------------------------------------------ |
+| `execute_lua`    | Execute Lua in Cheat Engine. Use only for trusted local workflows. |
+| `convert_string` | Convert ANSI/UTF-8 or compute MD5.                                 |
+| `get_speedhack`  | Read CE speedhack state.                                           |
+| `set_speedhack`  | Enable/disable or set CE speedhack speed.                          |
 
 ## Scan behavior notes
 
