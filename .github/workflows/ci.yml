@@ -31,16 +31,16 @@ jobs:
             - name: Build Release
               run: dotnet build -c Release --no-restore
 
-            - name: Upload Debug DLL
+            - name: Upload Debug plugin bundle
               uses: actions/upload-artifact@v4
               with:
                   name: ce-mcp-debug
-                  path: bin/x64/Debug/net10.0-windows/ce-mcp.dll
+                  path: bin/x64/Debug/net10.0-windows/
                   if-no-files-found: error
 
-            - name: Upload Release DLL
+            - name: Upload Release plugin bundle
               uses: actions/upload-artifact@v4
               with:
                   name: ce-mcp-release
-                  path: bin/x64/Release/net10.0-windows/ce-mcp.dll
+                  path: bin/x64/Release/net10.0-windows/
                   if-no-files-found: error
