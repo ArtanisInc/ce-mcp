@@ -40,7 +40,7 @@ namespace CEMCP.Views
         {
             bool running = IsServerRunning(_plugin);
             _viewModel.ServerStatus = running ? "Running" : "Stopped";
-            openApiButton.IsEnabled = running;
+            copySseUrlButton.IsEnabled = running;
             copySseUrlWithTokenButton.IsEnabled = running;
         }
 
@@ -119,9 +119,8 @@ namespace CEMCP.Views
         {
             try
             {
-                var url = $"{_viewModel.BaseUrl}/sse";
-                Clipboard.SetText(url);
-                _viewModel.TestResult = $"Copied to clipboard: {url}";
+                Clipboard.SetText(_viewModel.SseUrl);
+                _viewModel.TestResult = $"Copied to clipboard: {_viewModel.SseUrl}";
             }
             catch (Exception ex)
             {
@@ -133,16 +132,10 @@ namespace CEMCP.Views
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(_viewModel.AuthToken))
-                {
-                    _viewModel.TestResult =
-                        "Auth token is empty. Save configuration to generate a token.";
+                if (!EnsureAuthTokenForCopy())
                     return;
-                }
 
-                var url =
-                    $"{_viewModel.BaseUrl}/sse?token={Uri.EscapeDataString(_viewModel.AuthToken.Trim())}";
-                Clipboard.SetText(url);
+                Clipboard.SetText(_viewModel.SseUrlWithToken);
                 _viewModel.TestResult = "Copied SSE URL (with token) to clipboard.";
             }
             catch (Exception ex)
@@ -155,21 +148,25 @@ namespace CEMCP.Views
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(_viewModel.AuthToken))
-                {
-                    _viewModel.TestResult =
-                        "Auth token is empty. Save configuration to generate a token.";
+                if (!EnsureAuthTokenForCopy())
                     return;
-                }
 
-                var header = $"Authorization: Bearer {_viewModel.AuthToken.Trim()}";
-                Clipboard.SetText(header);
+                Clipboard.SetText(_viewModel.AuthHeader);
                 _viewModel.TestResult = "Copied Authorization header to clipboard.";
             }
             catch (Exception ex)
             {
                 _viewModel.TestResult = $"Error copying header: {ex.Message}";
             }
+        }
+
+        private bool EnsureAuthTokenForCopy()
+        {
+            if (!string.IsNullOrWhiteSpace(_viewModel.AuthToken))
+                return true;
+
+            _viewModel.TestResult = "Auth token is empty. Save configuration to generate a token.";
+            return false;
         }
 
         private void ApplyTheme(bool isDarkMode)
@@ -182,7 +179,7 @@ namespace CEMCP.Views
             Resources["BtnDisabledBgBrush"] = brushes.BtnDisabledBg;
             Resources["BtnDisabledFgBrush"] = brushes.BtnDisabledFg;
 
-            ApplyThemeToChildren((Grid)Content, brushes);
+            ApplyThemeToElement((DependencyObject)Content, brushes);
         }
 
         private ThemeBrushes ResolveThemeBrushes(string prefix)
@@ -201,41 +198,35 @@ namespace CEMCP.Views
             };
         }
 
-        private static void ApplyThemeToChildren(Grid grid, ThemeBrushes brushes)
+        private static void ApplyThemeToElement(DependencyObject element, ThemeBrushes brushes)
         {
-            foreach (var child in grid.Children)
+            switch (element)
             {
-                switch (child)
-                {
-                    case TextBlock tb:
-                        tb.Foreground = brushes.Foreground;
-                        break;
-                    case TextBox box:
-                        box.Background = brushes.TextBoxBg;
-                        box.Foreground = brushes.Foreground;
-                        box.BorderBrush = brushes.TextBoxBorder;
-                        break;
-                    case CheckBox cb:
-                        cb.Foreground = brushes.Foreground;
-                        break;
-                    case WrapPanel panel:
-                        ApplyThemeToButtons(panel, brushes);
-                        break;
-                }
-            }
-        }
-
-        private static void ApplyThemeToButtons(WrapPanel panel, ThemeBrushes brushes)
-        {
-            foreach (var child in panel.Children)
-            {
-                if (child is Button button)
-                {
+                case TextBlock textBlock:
+                    if (textBlock.Name != "statusTextBlock")
+                        textBlock.Foreground = brushes.Foreground;
+                    break;
+                case TextBox textBox:
+                    textBox.Background = brushes.TextBoxBg;
+                    textBox.Foreground = brushes.Foreground;
+                    textBox.BorderBrush = brushes.TextBoxBorder;
+                    break;
+                case CheckBox checkBox:
+                    checkBox.Foreground = brushes.Foreground;
+                    break;
+                case Button button:
                     button.Background = brushes.BtnBg;
                     button.Foreground = brushes.Foreground;
                     button.BorderBrush = brushes.BtnBorder;
-                }
+                    break;
+                case GroupBox groupBox:
+                    groupBox.Foreground = brushes.Foreground;
+                    groupBox.BorderBrush = brushes.TextBoxBorder;
+                    break;
             }
+
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
+                ApplyThemeToElement(VisualTreeHelper.GetChild(element, i), brushes);
         }
 
         private sealed class ThemeBrushes

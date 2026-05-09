@@ -26,7 +26,7 @@ namespace CEMCP.Models
                 {
                     _host = value;
                     OnPropertyChanged();
-                    OnPropertyChanged(nameof(BaseUrl));
+                    NotifyEndpointPropertiesChanged();
                 }
             }
         }
@@ -40,7 +40,7 @@ namespace CEMCP.Models
                 {
                     _port = value;
                     OnPropertyChanged();
-                    OnPropertyChanged(nameof(BaseUrl));
+                    NotifyEndpointPropertiesChanged();
                 }
             }
         }
@@ -67,6 +67,8 @@ namespace CEMCP.Models
                 {
                     _authToken = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(AuthHeader));
+                    OnPropertyChanged(nameof(SseUrlWithToken));
                 }
             }
         }
@@ -87,6 +89,16 @@ namespace CEMCP.Models
         public string BaseUrl => $"http://{Host}:{Port}";
 
         public string SseUrl => $"{BaseUrl}/sse";
+
+        public string SseUrlWithToken =>
+            string.IsNullOrWhiteSpace(AuthToken)
+                ? SseUrl
+                : $"{SseUrl}?token={System.Uri.EscapeDataString(AuthToken.Trim())}";
+
+        public string AuthHeader =>
+            string.IsNullOrWhiteSpace(AuthToken)
+                ? "Authorization: Bearer <empty>"
+                : $"Authorization: Bearer {AuthToken.Trim()}";
 
         public string StartStopButtonText =>
             ServerStatus.Equals("running", System.StringComparison.CurrentCultureIgnoreCase)
@@ -185,7 +197,15 @@ namespace CEMCP.Models
             ServerConfig.ConfigAllowNonLoopback = AllowNonLoopback;
             ServerConfig.ConfigAuthToken = AuthToken.Trim();
             ServerConfig.EnsureAuthToken();
+            AuthToken = ServerConfig.ConfigAuthToken;
             ServerConfig.SaveToFile();
+        }
+
+        private void NotifyEndpointPropertiesChanged()
+        {
+            OnPropertyChanged(nameof(BaseUrl));
+            OnPropertyChanged(nameof(SseUrl));
+            OnPropertyChanged(nameof(SseUrlWithToken));
         }
 
         private void UpdateStatusColor()
