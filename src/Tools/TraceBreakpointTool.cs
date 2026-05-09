@@ -18,6 +18,9 @@ namespace Tools
         private const int MaxStackDepth = 128;
         private const int MaxHitsReturn = 2000;
         private const int MaxHitsStoredPerId = 5000;
+        private const int DefaultTraceMaxHits = 1000;
+        private const int MaxTraceMaxHits = 100000;
+        private const int MaxTraceMinIntervalMs = 60000;
 
         private TraceBreakpointTool() { }
 
@@ -33,7 +36,11 @@ namespace Tools
                 string? id = null,
             [Description("Whether to log CPU register values (true/false)")] bool capture_registers = true,
             [Description("Whether to log stack contents (true/false)")] bool capture_stack = false,
-            [Description("Number of stack values to log (max 128)")] int stack_depth = 16
+            [Description("Number of stack values to log (max 128)")] int stack_depth = 16,
+            [Description("Maximum hits before auto-disabling the breakpoint (1-100000, default 1000)")]
+                int max_hits = DefaultTraceMaxHits,
+            [Description("Minimum milliseconds between logged hits (0-60000, default 0). Skipped hits still continue immediately.")]
+                int min_interval_ms = 0
         )
         {
             return CeLuaGate.Run<object>(() =>
@@ -55,6 +62,18 @@ namespace Tools
                             error = $"stack_depth must be between 0 and {MaxStackDepth}",
                         };
                     }
+                    if (max_hits <= 0 || max_hits > MaxTraceMaxHits)
+                        return new
+                        {
+                            success = false,
+                            error = $"max_hits must be between 1 and {MaxTraceMaxHits}",
+                        };
+                    if (min_interval_ms < 0 || min_interval_ms > MaxTraceMinIntervalMs)
+                        return new
+                        {
+                            success = false,
+                            error = $"min_interval_ms must be between 0 and {MaxTraceMinIntervalMs}",
+                        };
 
                     // LuaExecutor truncates arrays beyond MaxTableEntries; avoid returning
                     // stack arrays that exceed the serializer limit.
@@ -85,7 +104,9 @@ namespace Tools
                         "hardware_execute",
                         capture_registers,
                         capture_stack,
-                        effectiveStackDepth
+                        effectiveStackDepth,
+                        maxHits: max_hits,
+                        minIntervalMs: min_interval_ms
                     );
 
                     var (ok, method, warning) = SetBreakpointWithFallbacks(
@@ -108,7 +129,9 @@ namespace Tools
                         addr,
                         "execute",
                         method,
-                        1
+                        1,
+                        max_hits,
+                        min_interval_ms
                     );
 
                     return new
@@ -118,6 +141,8 @@ namespace Tools
                         address = $"0x{addr:X}",
                         method,
                         warning,
+                        max_hits,
+                        min_interval_ms,
                     };
                 }
                 catch (Exception ex)
@@ -139,7 +164,11 @@ namespace Tools
                 string? id = null,
             [Description("Type of access to trigger on: 'r' (read), 'w' (write), or 'rw' (both)")] string access_type = "w",
             [Description("Region size in bytes (1, 2, 4, or 8)")] int size = 4,
-            [Description("Whether to log the value in memory at the time of hit (true/false)")] bool capture_value = true
+            [Description("Whether to log the value in memory at the time of hit (true/false)")] bool capture_value = true,
+            [Description("Maximum hits before auto-disabling the breakpoint (1-100000, default 1000)")]
+                int max_hits = DefaultTraceMaxHits,
+            [Description("Minimum milliseconds between logged hits (0-60000, default 0). Skipped hits still continue immediately.")]
+                int min_interval_ms = 0
         )
         {
             return CeLuaGate.Run<object>(() =>
@@ -167,6 +196,18 @@ namespace Tools
                         {
                             success = false,
                             error = "access_type must be 'r', 'w', or 'rw'",
+                        };
+                    if (max_hits <= 0 || max_hits > MaxTraceMaxHits)
+                        return new
+                        {
+                            success = false,
+                            error = $"max_hits must be between 1 and {MaxTraceMaxHits}",
+                        };
+                    if (min_interval_ms < 0 || min_interval_ms > MaxTraceMinIntervalMs)
+                        return new
+                        {
+                            success = false,
+                            error = $"min_interval_ms must be between 0 and {MaxTraceMinIntervalMs}",
                         };
 
                     EnsureTraceTables();
@@ -196,7 +237,9 @@ namespace Tools
                         stackDepth: 0,
                         accessType: at,
                         dataSize: size,
-                        captureValue: capture_value
+                        captureValue: capture_value,
+                        maxHits: max_hits,
+                        minIntervalMs: min_interval_ms
                     );
 
                     var (ok, method, warning) = SetBreakpointWithFallbacks(
@@ -219,7 +262,9 @@ namespace Tools
                         addr,
                         $"data_{at}",
                         method,
-                        size
+                        size,
+                        max_hits,
+                        min_interval_ms
                     );
 
                     return new
@@ -231,6 +276,8 @@ namespace Tools
                         method,
                         size,
                         warning,
+                        max_hits,
+                        min_interval_ms,
                     };
                 }
                 catch (Exception ex)
@@ -549,7 +596,9 @@ namespace Tools
             ulong address,
             string type,
             string method,
-            int size
+            int size,
+            int maxHits,
+            int minIntervalMs
         )
         {
             var script =
@@ -563,7 +612,12 @@ namespace Tools
                   addressHex = {ToLuaStringLiteral($"0x{address:X}")},
                   type = {ToLuaStringLiteral(type)},
                   method = {ToLuaStringLiteral(method)},
-                  size = {size}
+                  size = {size},
+                  max_hits = {maxHits},
+                  min_interval_ms = {minIntervalMs},
+                  total_hits = 0,
+                  skipped_hits = 0,
+                  disabled = false
                 }}
                 __ce_mcp_trace_hits[id] = __ce_mcp_trace_hits[id] or {{}}
                 return true
@@ -592,7 +646,9 @@ namespace Tools
             int stackDepth,
             string? accessType = null,
             int? dataSize = null,
-            bool captureValue = false
+            bool captureValue = false,
+            int maxHits = DefaultTraceMaxHits,
+            int minIntervalMs = 0
         )
         {
             var idLit = ToLuaStringLiteral(id);
@@ -608,6 +664,8 @@ namespace Tools
                 : "nil";
             var captureValueLit = captureValue ? "true" : "false";
             var hitCapLit = MaxHitsStoredPerId.ToString(CultureInfo.InvariantCulture);
+            var maxHitsLit = maxHits.ToString(CultureInfo.InvariantCulture);
+            var minIntervalSecondsLit = (minIntervalMs / 1000.0).ToString(CultureInfo.InvariantCulture);
 
             return $@"
                 local id = {idLit}
@@ -615,6 +673,37 @@ namespace Tools
                 local access_type = {accessTypeLit}
                 local data_size = {sizeLit}
                 local capture_value = {captureValueLit}
+                local max_hits = {maxHitsLit}
+                local min_interval_seconds = {minIntervalSecondsLit}
+
+                __ce_mcp_trace_breakpoints = __ce_mcp_trace_breakpoints or {{}}
+                local bp = __ce_mcp_trace_breakpoints[id] or {{}}
+                bp.total_hits = (bp.total_hits or 0) + 1
+                __ce_mcp_trace_breakpoints[id] = bp
+
+                local function continue_process()
+                  pcall(function() debug_continueFromBreakpoint(co_run) end)
+                end
+
+                if max_hits > 0 and bp.total_hits > max_hits then
+                  bp.disabled = true
+                  bp.disabled_reason = 'max_hits'
+                  bp.disabled_at_hit = bp.total_hits
+                  pcall(function() debug_removeBreakpoint(addr) end)
+                  continue_process()
+                  return 1
+                end
+
+                if min_interval_seconds > 0 then
+                  local now = os.clock()
+                  local last = bp.last_log_clock
+                  if last ~= nil and (now - last) < min_interval_seconds then
+                    bp.skipped_hits = (bp.skipped_hits or 0) + 1
+                    continue_process()
+                    return 1
+                  end
+                  bp.last_log_clock = now
+                end
 
                 local is64 = false
                 pcall(function() is64 = targetIs64Bit() end)
@@ -623,6 +712,10 @@ namespace Tools
                   id = id,
                   address = string.format('0x%X', addr),
                   timestamp = os.time(),
+                  hit_number = bp.total_hits,
+                  skipped_hits = bp.skipped_hits or 0,
+                  max_hits = max_hits,
+                  min_interval_ms = {minIntervalMs},
                   breakpoint_type = {bpTypeLit},
                   arch = is64 and 'x64' or 'x86'
                 }}
@@ -705,7 +798,7 @@ namespace Tools
                   for i=1, overflow do table.remove(list, 1) end
                 end
 
-                pcall(function() debug_continueFromBreakpoint(co_run) end)
+                continue_process()
                 return 1
             ";
         }
