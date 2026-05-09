@@ -91,6 +91,7 @@ namespace CEMCP
                     .WithTools<Tools.TraceBreakpointTool>()
                     .WithTools<Tools.MemoryViewTool>()
                     .WithTools<Tools.SymbolTool>()
+                    .WithTools<Tools.SpeedhackTool>()
                     .WithResources<Resources.ProcessResources>();
 
                 builder.Logging.ClearProviders(); // Disable logging

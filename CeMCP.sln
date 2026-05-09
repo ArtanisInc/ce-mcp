@@ -5,6 +5,8 @@ VisualStudioVersion = 17.14.36414.22
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CeMCP", "CeMCP.csproj", "{C9BA2D19-89F7-4469-8B13-D01978472711}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CESDK", "CESDK\CESDK.csproj", "{77C12C11-B704-43ED-AFB9-DCCF7926D67A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -15,6 +17,10 @@ Global
 		{C9BA2D19-89F7-4469-8B13-D01978472711}.Debug|x64.Build.0 = Debug|x64
 		{C9BA2D19-89F7-4469-8B13-D01978472711}.Release|x64.ActiveCfg = Release|x64
 		{C9BA2D19-89F7-4469-8B13-D01978472711}.Release|x64.Build.0 = Release|x64
+		{77C12C11-B704-43ED-AFB9-DCCF7926D67A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{77C12C11-B704-43ED-AFB9-DCCF7926D67A}.Debug|x64.Build.0 = Debug|Any CPU
+		{77C12C11-B704-43ED-AFB9-DCCF7926D67A}.Release|x64.ActiveCfg = Release|Any CPU
+		{77C12C11-B704-43ED-AFB9-DCCF7926D67A}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

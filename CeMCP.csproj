@@ -33,6 +33,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="CESDK\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="CESDK\CESDK.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 

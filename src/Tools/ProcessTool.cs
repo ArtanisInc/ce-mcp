@@ -140,7 +140,8 @@ namespace Tools
             });
         }
 
-        [McpServerTool(Name = "get_module_size"), Description("Returns the memory size (in bytes) of a specific loaded module.")]
+        // Keep this helper for internal/backward-compatible code paths, but expose the
+        // public MCP tool only from SymbolTool to avoid duplicate tool names.
         public static object GetModuleSize([Description("Name of the module (e.g. 'kernel32.dll')")] string moduleName)
         {
             return CeLuaGate.Run<object>(() =>
@@ -220,10 +221,8 @@ namespace Tools
             });
         }
 
-        [
-            McpServerTool(Name = "reinitialize_symbols"),
-            Description("Triggers Cheat Engine to reload and re-parse symbols for the target process.")
-        ]
+        // Keep this helper for internal/backward-compatible code paths, but expose the
+        // public MCP tool only from SymbolTool to avoid duplicate tool names.
         public static object ReinitializeSymbols([Description("Whether to wait until the symbol handler is fully updated (true/false)")] string waitTillDone = "true")
         {
             return CeLuaGate.Run<object>(() =>
