@@ -12,12 +12,14 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
-    <SelfContained>true</SelfContained>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <SelfContained>false</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>false</IncludeAllContentForSelfExtract>
 
     <!-- Force all dependencies to be copied locally -->
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <IncludeFrameworkAssembliesInBuildOutput>false</IncludeFrameworkAssembliesInBuildOutput>
+    <CopyLocalProjectReference>true</CopyLocalProjectReference>
 
     <!-- Generate runtime config to help find framework assemblies -->
     <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
@@ -31,14 +33,6 @@
     <!-- Allow roll-forward to find available ASP.NET Core runtime -->
     <RollForward>Major</RollForward>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Compile Remove="CESDK\**\*.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="CESDK\CESDK.csproj" />
-  </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
