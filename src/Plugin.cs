@@ -29,6 +29,9 @@ namespace CEMCP
 
         protected override void OnEnable()
         {
+            // Ensure configuration is loaded as soon as the plugin is enabled
+            ServerConfig.EnsureLoaded();
+
             // WPF's InitializeComponent uses Application.LoadComponent which resolves
             // assemblies by name. Since CE loads this DLL via CLR hosting, the default
             // resolver can't find it. Return the already-loaded assembly when asked.

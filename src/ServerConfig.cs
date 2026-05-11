@@ -35,6 +35,16 @@ namespace CEMCP
                 "config.json"
             );
 
+        private static bool _isLoaded = false;
+
+        public static void EnsureLoaded()
+        {
+            if (_isLoaded) return;
+            LoadFromFile();
+            LoadFromEnvironment();
+            _isLoaded = true;
+        }
+
         public static void LoadFromEnvironment()
         {
             var hostEnv = Environment.GetEnvironmentVariable("MCP_HOST");
@@ -78,9 +88,15 @@ namespace CEMCP
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // If loading fails, use defaults.
+                // If loading fails, use defaults but log why
+                try
+                {
+                    var logPath = Path.Combine(Path.GetDirectoryName(ConfigFilePath) ?? "", "error.log");
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Config Load Error: {ex.Message}\n");
+                }
+                catch { /* ignore */ }
             }
         }
 
@@ -108,6 +124,7 @@ namespace CEMCP
 
         public static string GetValidatedBaseUrl()
         {
+            EnsureLoaded();
             EnsureAuthToken();
 
             if (ConfigPort is < 1 or > 65535)
@@ -126,6 +143,7 @@ namespace CEMCP
 
         public static void EnsureAuthToken()
         {
+            EnsureLoaded();
             if (!string.IsNullOrEmpty(ConfigAuthToken))
                 return;
 

@@ -181,6 +181,7 @@ namespace CEMCP.Models
 
         public void LoadFromServerConfig()
         {
+            ServerConfig.EnsureLoaded();
             ServerConfig.EnsureAuthToken();
             Host = ServerConfig.ConfigHost;
             Port = ServerConfig.ConfigPort;
