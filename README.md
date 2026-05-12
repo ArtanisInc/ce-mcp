@@ -147,12 +147,23 @@ Key components:
 | `list_modules`         | List modules for the current or specified process.          |
 | `enum_modules`         | Enumerate modules with base, size, bitness, and path.       |
 | `get_module_size`      | Return the size of a loaded module.                         |
-| `list_memory_regions`  | List memory regions from the process tool surface.          |
-| `enum_memory_regions`  | Enumerate memory regions with protection/state/type fields. |
+| `list_memory_regions`  | List memory regions with pagination and filters.            |
+| `enum_memory_regions`  | Enumerate memory regions with pagination and filters.       |
 | `get_pointer_size`     | Get or set pointer size used by CE for the target.          |
-| `reinitialize_symbols` | Reload/re-parse symbols.                                    |
-| `enable_symbols`       | Enable Windows or kernel symbol support.                    |
+| `reinitialize_symbols` | Reload/re-parse symbols; non-blocking by default.           |
+| `enable_symbols`       | Start Windows or kernel symbol loading.                     |
+| `get_symbol_loading_status` | Poll background symbol loading status.                 |
 | `get_symbol_info`      | Return symbol metadata.                                     |
+
+Memory-region enumeration is paginated by default (`limit=200`, max `1000`
+without explicit opt-in) to avoid flooding MCP clients on large processes.
+Use `offset` and `nextOffset` to retrieve additional pages, and narrow results
+with `filter`, `min_size`, `protection`, or `summary_only`.
+
+Symbol loading can be slow when Windows PDBs are involved. `enable_symbols`
+runs non-blocking by default; call `get_symbol_loading_status` to poll progress.
+Use `wait=true` only when the MCP client can tolerate a blocking call.
+`reinitialize_symbols` also defaults to `waitTillDone=false`.
 
 ### Address resolution and symbols
 
