@@ -155,16 +155,6 @@ Key components:
 | `get_symbol_loading_status` | Poll background symbol loading status.                 |
 | `get_symbol_info`      | Return symbol metadata.                                     |
 
-Memory-region enumeration is paginated by default (`limit=200`, max `1000`
-without explicit opt-in) to avoid flooding MCP clients on large processes.
-Use `offset` and `nextOffset` to retrieve additional pages, and narrow results
-with `filter`, `min_size`, `protection`, or `summary_only`.
-
-Symbol loading can be slow when Windows PDBs are involved. `enable_symbols`
-runs non-blocking by default; call `get_symbol_loading_status` to poll progress.
-Use `wait=true` only when the MCP client can tolerate a blocking call.
-`reinitialize_symbols` also defaults to `waitTillDone=false`.
-
 ### Address resolution and symbols
 
 | Tool                    | Purpose                                                  |
