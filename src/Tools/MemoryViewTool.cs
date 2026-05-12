@@ -16,6 +16,8 @@ namespace Tools
     public class MemoryViewTool
     {
         private const string AddressRequired = "Address is required";
+        private const int DefaultMemoryRegionLimit = 200;
+        private const int MaxMemoryRegionLimit = 1000;
 
         private MemoryViewTool() { }
 
@@ -155,9 +157,15 @@ namespace Tools
         }
 
         [McpServerTool(Name = "enum_memory_regions"), Description(
-            "Enumerates all memory regions of the target process, showing base address, size, and protection flags.")]
+            "Enumerates target process memory regions with pagination. Defaults to committed regions and a bounded page to avoid huge MCP responses.")]
         public static object EnumMemoryRegions(
-            [Description("Filter by state: 'committed' (default), 'reserved', 'free', or 'all'")] string filter = "committed")
+            [Description("Filter by state: 'committed' (default), 'reserved', 'free', or 'all'")] string filter = "committed",
+            [Description("Zero-based page offset after filtering")] int offset = 0,
+            [Description("Maximum regions to return. Default 200, max 1000 unless allow_large_result=true")] int limit = DefaultMemoryRegionLimit,
+            [Description("Only include regions whose size is at least this many bytes")] ulong min_size = 0,
+            [Description("Optional protection filter, e.g. 'execute', 'write', 'readwrite', 'noaccess'")] string? protection = null,
+            [Description("If true, returns counts/page metadata without the region list")] bool summary_only = false,
+            [Description("Explicitly allow returning every matching region when limit <= 0")] bool allow_large_result = false)
         {
             return CeLuaGate.Run<object>(() =>
             {
@@ -166,33 +174,100 @@ namespace Tools
                     if (!ValidationHelper.IsProcessAttached())
                         return new { success = false, error = "No process is currently opened. Use openProcess() first." };
 
-                    var regions = MemoryRegions.EnumMemoryRegions();
+                    if (offset < 0)
+                        return new { success = false, error = "offset must be >= 0" };
 
-                    var filtered = filter?.ToLower() switch
+                    var requestedLimit = NormalizeRegionLimit(limit, allow_large_result);
+                    var filtered = MemoryRegions
+                        .EnumMemoryRegions()
+                        .Where(r => MatchesStateFilter(r.State, filter))
+                        .Where(r => r.RegionSize >= min_size)
+                        .Where(r => MatchesProtectionFilter(r.Protect, protection))
+                        .ToList();
+
+                    var total = filtered.Count;
+                    var page = requestedLimit.HasValue
+                        ? filtered.Skip(offset).Take(requestedLimit.Value).ToList()
+                        : filtered.Skip(offset).ToList();
+
+                    var result = summary_only
+                        ? new List<object>()
+                        : page.Select(r => new
+                        {
+                            baseAddress = $"0x{r.BaseAddress:X}",
+                            regionSize = r.RegionSize,
+                            regionSizeHex = $"0x{r.RegionSize:X}",
+                            protect = ProtectToString(r.Protect),
+                            protectRaw = r.Protect,
+                            state = StateToString(r.State),
+                            stateRaw = r.State,
+                            type = TypeToString(r.Type),
+                            typeRaw = r.Type
+                        }).ToList<object>();
+
+                    var nextOffset = offset + page.Count;
+                    return new
                     {
-                        "all" => regions,
-                        "reserved" => regions.Where(r => r.State == 0x2000).ToList(),
-                        "free" => regions.Where(r => r.State == 0x10000).ToList(),
-                        _ => regions.Where(r => r.State == 0x1000).ToList() // committed
+                        success = true,
+                        total,
+                        count = result.Count,
+                        offset,
+                        limit = requestedLimit,
+                        hasMore = nextOffset < total,
+                        nextOffset = nextOffset < total ? nextOffset : (int?)null,
+                        filter = NormalizeStateFilter(filter),
+                        minSize = min_size,
+                        protection,
+                        summaryOnly = summary_only,
+                        regions = result
                     };
-
-                    var result = filtered.Select(r => new
-                    {
-                        baseAddress = $"0x{r.BaseAddress:X}",
-                        regionSize = r.RegionSize,
-                        regionSizeHex = $"0x{r.RegionSize:X}",
-                        protect = ProtectToString(r.Protect),
-                        state = StateToString(r.State),
-                        type = TypeToString(r.Type)
-                    }).ToList();
-
-                    return new { success = true, count = result.Count, regions = result };
                 }
                 catch (Exception ex)
                 {
                     return new { success = false, error = ex.Message };
                 }
             });
+        }
+
+        private static int? NormalizeRegionLimit(int limit, bool allowLargeResult)
+        {
+            if (limit <= 0)
+                return allowLargeResult ? null : DefaultMemoryRegionLimit;
+
+            return allowLargeResult ? limit : Math.Min(limit, MaxMemoryRegionLimit);
+        }
+
+        private static string NormalizeStateFilter(string? filter) =>
+            string.IsNullOrWhiteSpace(filter) ? "committed" : filter.Trim().ToLowerInvariant();
+
+        private static bool MatchesStateFilter(int state, string? filter)
+        {
+            return NormalizeStateFilter(filter) switch
+            {
+                "all" => true,
+                "reserved" => state == 0x2000,
+                "free" => state == 0x10000,
+                "committed" => state == 0x1000,
+                _ => state == 0x1000,
+            };
+        }
+
+        private static bool MatchesProtectionFilter(int protect, string? protection)
+        {
+            if (string.IsNullOrWhiteSpace(protection))
+                return true;
+
+            var normalized = protection.Trim().ToLowerInvariant().Replace("_", "");
+            return normalized switch
+            {
+                "noaccess" => protect == 0x01,
+                "readonly" or "read" => protect is 0x02 or 0x20,
+                "readwrite" or "write" => protect is 0x04 or 0x08 or 0x40 or 0x80,
+                "execute" => (protect & 0xF0) != 0,
+                "executeread" => protect == 0x20,
+                "executereadwrite" or "executewrite" => protect == 0x40,
+                _ => true,
+            };
         }
 
         [McpServerTool(Name = "get_memory_protection"), Description("Retrieves the memory protection flags (read, write, execute) for a given address.")]

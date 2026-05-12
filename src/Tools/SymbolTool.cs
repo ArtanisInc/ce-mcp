@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
 using CEMCP;
 using CESDK.Classes;
 using ModelContextProtocol.Server;
@@ -14,6 +15,14 @@ namespace Tools
     [McpServerToolType]
     public class SymbolTool
     {
+        private static readonly object SymbolOperationLock = new();
+        private static Task? symbolOperationTask;
+        private static string? symbolOperationType;
+        private static string symbolOperationStatus = "idle";
+        private static string? symbolOperationError;
+        private static DateTimeOffset? symbolOperationStartedAt;
+        private static DateTimeOffset? symbolOperationCompletedAt;
+
         private SymbolTool() { }
 
         [McpServerTool(Name = "enum_modules"), Description(
@@ -122,39 +131,76 @@ namespace Tools
         }
 
         [McpServerTool(Name = "enable_symbols"), Description(
-            "Enables additional symbol loading features. 'windows' enables PDB downloading (can be slow), 'kernel' enables kernel-mode symbols.")]
+            "Enables additional symbol loading features. Non-blocking by default; use get_symbol_loading_status to poll progress.")]
         public static object EnableSymbols(
-            [Description("Symbol type to enable: 'windows' or 'kernel'")] string symbolType)
+            [Description("Symbol type to enable: 'windows' or 'kernel'")] string symbolType,
+            [Description("If true, waits for the CE Lua call to return. Default false avoids blocking MCP on slow PDB work.")] bool wait = false)
         {
-            return CeLuaGate.Run<object>(() =>
-            {
-                try
-                {
-                    if (string.IsNullOrWhiteSpace(symbolType))
-                        return new { success = false, error = "Symbol type is required ('windows' or 'kernel')" };
+            if (string.IsNullOrWhiteSpace(symbolType))
+                return new { success = false, error = "Symbol type is required ('windows' or 'kernel')" };
 
-                    switch (symbolType.ToLower())
-                    {
-                        case "windows":
-                            SymbolManager.EnableWindowsSymbols();
-                            return new { success = true, message = "Windows symbols enabled (PDB download may still be in progress)" };
-                        case "kernel":
-                            SymbolManager.EnableKernelSymbols();
-                            return new { success = true, message = "Kernel symbols enabled" };
-                        default:
-                            return new { success = false, error = $"Unknown symbol type: {symbolType}. Use 'windows' or 'kernel'" };
-                    }
-                }
-                catch (Exception ex)
+            var normalizedType = symbolType.Trim().ToLowerInvariant();
+            if (normalizedType is not ("windows" or "kernel"))
+                return new { success = false, error = $"Unknown symbol type: {symbolType}. Use 'windows' or 'kernel'" };
+
+            if (wait)
+            {
+                return CeLuaGate.Run<object>(() =>
                 {
-                    return new { success = false, error = ex.Message };
+                    try
+                    {
+                        EnableSymbolsUnsafe(normalizedType);
+                        return new
+                        {
+                            success = true,
+                            started = false,
+                            status = "completed",
+                            symbolType = normalizedType,
+                            symbolsLoaded = SymbolManager.SymbolsDoneLoading(),
+                        };
+                    }
+                    catch (Exception ex)
+                    {
+                        return new { success = false, error = ex.Message };
+                    }
+                });
+            }
+
+            lock (SymbolOperationLock)
+            {
+                if (symbolOperationTask is { IsCompleted: false })
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "A symbol operation is already running",
+                        status = symbolOperationStatus,
+                        symbolType = symbolOperationType,
+                        startedAt = symbolOperationStartedAt,
+                    };
                 }
-            });
+
+                symbolOperationType = normalizedType;
+                symbolOperationStatus = "running";
+                symbolOperationError = null;
+                symbolOperationStartedAt = DateTimeOffset.UtcNow;
+                symbolOperationCompletedAt = null;
+                symbolOperationTask = Task.Run(() => RunSymbolOperation(normalizedType));
+            }
+
+            return new
+            {
+                success = true,
+                started = true,
+                status = "running",
+                symbolType = normalizedType,
+                message = "Symbol loading was started in the background. Poll get_symbol_loading_status.",
+            };
         }
 
         [McpServerTool(Name = "reinitialize_symbols"), Description("Triggers a reinitialization of the symbol handler. Useful after modules are loaded/unloaded.")]
         public static object ReinitializeSymbols(
-            [Description("Whether to wait until reinitialization is complete (true/false)")] bool waitTillDone = true)
+            [Description("Whether to wait until reinitialization is complete. Default false avoids blocking MCP.")] bool waitTillDone = false)
         {
             return CeLuaGate.Run<object>(() =>
             {
@@ -167,6 +213,71 @@ namespace Tools
                 catch (Exception ex)
                 {
                     return new { success = false, error = ex.Message };
+                }
+            });
+        }
+
+        [McpServerTool(Name = "get_symbol_loading_status"), Description("Returns the current symbol loading status without blocking on an active background symbol job.")]
+        public static object GetSymbolLoadingStatus()
+        {
+            Task? currentTask;
+            string status;
+            string? type;
+            string? error;
+            DateTimeOffset? startedAt;
+            DateTimeOffset? completedAt;
+
+            lock (SymbolOperationLock)
+            {
+                currentTask = symbolOperationTask;
+                status = symbolOperationStatus;
+                type = symbolOperationType;
+                error = symbolOperationError;
+                startedAt = symbolOperationStartedAt;
+                completedAt = symbolOperationCompletedAt;
+            }
+
+            if (currentTask is { IsCompleted: false })
+            {
+                return new
+                {
+                    success = true,
+                    status,
+                    symbolType = type,
+                    startedAt,
+                    completedAt,
+                    error,
+                    symbolsLoaded = false,
+                    note = "Background symbol operation is still running; CE/Lua-backed tools may queue behind it.",
+                };
+            }
+
+            return CeLuaGate.Run<object>(() =>
+            {
+                try
+                {
+                    return new
+                    {
+                        success = true,
+                        status,
+                        symbolType = type,
+                        startedAt,
+                        completedAt,
+                        error,
+                        symbolsLoaded = SymbolManager.SymbolsDoneLoading(),
+                    };
+                }
+                catch (Exception ex)
+                {
+                    return new
+                    {
+                        success = false,
+                        status,
+                        symbolType = type,
+                        startedAt,
+                        completedAt,
+                        error = ex.Message,
+                    };
                 }
             });
         }
@@ -195,6 +306,52 @@ namespace Tools
                     return new { success = false, error = ex.Message };
                 }
             });
+        }
+
+        private static void RunSymbolOperation(string normalizedType)
+        {
+            try
+            {
+                CeLuaGate.Run<object>(() =>
+                {
+                    EnableSymbolsUnsafe(normalizedType);
+                    return new { success = true };
+                });
+
+                lock (SymbolOperationLock)
+                {
+                    symbolOperationStatus = "completed";
+                    symbolOperationCompletedAt = DateTimeOffset.UtcNow;
+                }
+            }
+            catch (Exception ex)
+            {
+                lock (SymbolOperationLock)
+                {
+                    symbolOperationStatus = "failed";
+                    symbolOperationError = ex.Message;
+                    symbolOperationCompletedAt = DateTimeOffset.UtcNow;
+                }
+            }
+        }
+
+        private static void EnableSymbolsUnsafe(string normalizedType)
+        {
+            switch (normalizedType)
+            {
+                case "windows":
+                    SymbolManager.EnableWindowsSymbols();
+                    break;
+                case "kernel":
+                    SymbolManager.EnableKernelSymbols();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(normalizedType),
+                        normalizedType,
+                        "Unknown symbol type"
+                    );
+            }
         }
     }
 }
